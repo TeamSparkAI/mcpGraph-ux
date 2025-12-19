@@ -18,21 +18,60 @@ import dagre from 'dagre';
 import 'reactflow/dist/style.css';
 import styles from './GraphVisualization.module.css';
 
+export type NodeExecutionState = 'pending' | 'running' | 'completed' | 'error';
+
+export interface NodeExecutionStatus {
+  nodeId: string;
+  state: NodeExecutionState;
+  startTime?: number;
+  endTime?: number;
+  duration?: number;
+  error?: string;
+}
+
 interface GraphVisualizationProps {
   nodes: Node[];
   edges: Edge[];
   selectedTool?: string | null;
+  executionState?: Map<string, NodeExecutionStatus>;
 }
 
-// Custom node styles based on node type
-const getNodeStyle = (nodeType: string) => {
+// Custom node styles based on node type and execution state
+const getNodeStyle = (nodeType: string, executionState?: NodeExecutionState) => {
   const baseStyle = {
     padding: '10px',
     borderRadius: '8px',
     border: '2px solid',
     fontSize: '12px',
     fontWeight: 500,
+    transition: 'all 0.3s ease',
   };
+
+  // Override colors based on execution state
+  if (executionState === 'running') {
+    return {
+      ...baseStyle,
+      backgroundColor: '#fff9c4',
+      borderColor: '#fbc02d',
+      color: '#f57f17',
+      boxShadow: '0 0 10px rgba(251, 192, 45, 0.5)',
+      animation: 'pulse 1.5s ease-in-out infinite',
+    };
+  } else if (executionState === 'completed') {
+    return {
+      ...baseStyle,
+      backgroundColor: '#c8e6c9',
+      borderColor: '#66bb6a',
+      color: '#2e7d32',
+    };
+  } else if (executionState === 'error') {
+    return {
+      ...baseStyle,
+      backgroundColor: '#ffcdd2',
+      borderColor: '#ef5350',
+      color: '#c62828',
+    };
+  }
 
   switch (nodeType) {
     case 'entry':
@@ -83,9 +122,15 @@ const getNodeStyle = (nodeType: string) => {
 // Custom node component with left/right handles for horizontal flow
 function CustomNode({ data }: { data: any }) {
   const nodeType = data.nodeType || 'unknown';
-  const style = getNodeStyle(nodeType);
+  const executionState = data.executionState as NodeExecutionState | undefined;
+  const style = getNodeStyle(nodeType, executionState);
   const isEntry = nodeType === 'entry';
   const isExit = nodeType === 'exit';
+
+  // Add status indicator
+  const statusIndicator = executionState === 'running' ? '⏳' :
+                         executionState === 'completed' ? '✓' :
+                         executionState === 'error' ? '✗' : null;
 
   return (
     <div style={style}>
@@ -96,7 +141,15 @@ function CustomNode({ data }: { data: any }) {
           style={{ background: '#555' }}
         />
       )}
-      <div>{data.label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+        {statusIndicator && <span>{statusIndicator}</span>}
+        <span>{data.label}</span>
+        {data.duration !== undefined && (
+          <span style={{ fontSize: '10px', opacity: 0.7 }}>
+            ({data.duration}ms)
+          </span>
+        )}
+      </div>
       {!isExit && (
         <Handle
           type="source"
@@ -108,6 +161,7 @@ function CustomNode({ data }: { data: any }) {
   );
 }
 
+// Define nodeTypes outside component to avoid React Flow warning
 const nodeTypes = {
   custom: CustomNode,
 };
@@ -171,10 +225,26 @@ export default function GraphVisualization({
   nodes,
   edges,
   selectedTool,
+  executionState,
 }: GraphVisualizationProps) {
   const layoutedNodes = useMemo(() => layoutNodes(nodes, edges), [nodes, edges]);
 
-  const [flowNodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
+  // Merge execution state into nodes
+  const nodesWithExecutionState = useMemo(() => {
+    return layoutedNodes.map(node => {
+      const status = executionState?.get(node.id);
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          executionState: status?.state || 'pending',
+          duration: status?.duration,
+        },
+      };
+    });
+  }, [layoutedNodes, executionState]);
+
+  const [flowNodes, setNodes, onNodesChange] = useNodesState(nodesWithExecutionState);
   const [flowEdges, setEdges, onEdgesChange] = useEdgesState(
     edges.map(edge => ({
       ...edge,
@@ -189,7 +259,19 @@ export default function GraphVisualization({
 
   useEffect(() => {
     const layouted = layoutNodes(nodes, edges);
-    setNodes(layouted);
+    // Merge execution state into nodes
+    const nodesWithState = layouted.map(node => {
+      const status = executionState?.get(node.id);
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          executionState: status?.state || 'pending',
+          duration: status?.duration,
+        },
+      };
+    });
+    setNodes(nodesWithState);
     setEdges(
       edges.map(edge => ({
         ...edge,
@@ -201,7 +283,7 @@ export default function GraphVisualization({
         style: { strokeWidth: 2 },
       }))
     );
-  }, [nodes, edges, setNodes, setEdges]);
+  }, [nodes, edges, executionState, setNodes, setEdges]);
 
   // Filter nodes/edges for selected tool if provided
   const filteredNodes = useMemo(() => {

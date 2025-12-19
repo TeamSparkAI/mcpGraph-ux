@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import GraphVisualization from '@/components/GraphVisualization';
+import GraphVisualization, { type NodeExecutionStatus } from '@/components/GraphVisualization';
 import ToolList from '@/components/ToolList';
 import ToolTester from '@/components/ToolTester';
 import styles from './page.module.css';
@@ -19,6 +19,7 @@ export default function Home() {
   const [graphData, setGraphData] = useState<{ nodes: any[]; edges: any[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [executionState, setExecutionState] = useState<Map<string, NodeExecutionStatus>>(new Map());
 
   useEffect(() => {
     // Load tools and graph data
@@ -92,6 +93,7 @@ export default function Home() {
                 nodes={graphData.nodes}
                 edges={graphData.edges}
                 selectedTool={selectedTool}
+                executionState={executionState}
               />
             )}
           </div>
@@ -99,7 +101,10 @@ export default function Home() {
           {selectedTool && (
             <div className={styles.testerSection}>
               <h2>Test Tool: {selectedTool}</h2>
-              <ToolTester toolName={selectedTool} />
+              <ToolTester 
+                toolName={selectedTool}
+                onExecutionStateChange={setExecutionState}
+              />
             </div>
           )}
         </div>
