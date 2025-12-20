@@ -1,24 +1,9 @@
 import { NextResponse } from 'next/server';
-import { McpGraphApi, type ExecutionOptions, type ExecutionHooks } from 'mcpgraph';
+import { type ExecutionOptions, type ExecutionHooks } from 'mcpgraph';
+import { getApi } from '@/lib/mcpGraphApi';
 import { sendExecutionEvent, closeExecutionStream } from '@/lib/executionStreamServer';
+import { registerController, unregisterController } from '@/lib/executionController';
 
-// Force dynamic rendering - this route requires runtime config
-export const dynamic = 'force-dynamic';
-
-let apiInstance: McpGraphApi | null = null;
-
-function getApi(): McpGraphApi {
-  const configPath = process.env.MCPGRAPH_CONFIG_PATH;
-  if (!configPath) {
-    throw new Error('MCPGRAPH_CONFIG_PATH environment variable is not set');
-  }
-
-  if (!apiInstance) {
-    apiInstance = new McpGraphApi(configPath);
-  }
-
-  return apiInstance;
-}
 
 export async function GET(
   request: Request,
@@ -56,20 +41,42 @@ export async function POST(
     const args = body.args || {};
     executionId = body.executionId as string | undefined;
     const executionOptions = body.options as ExecutionOptions | undefined;
+    
+    // Log breakpoints received
+    const breakpointsReceived = executionOptions?.breakpoints || [];
+    console.log(`[API] Received breakpoints: ${breakpointsReceived.length > 0 ? breakpointsReceived.join(', ') : 'none'}`);
 
     // If executionId is provided, set up hooks to stream events via SSE
+    // Store breakpoints for use in hooks (controller may not be available yet)
+    const breakpointsList = executionOptions?.breakpoints || [];
     let hooks: ExecutionHooks | undefined;
     if (executionId) {
       const execId = executionId; // Capture in const for closure
-      console.log(`[API] Setting up hooks for executionId: ${execId}`);
+      console.log(`[API] Setting up hooks for executionId: ${execId}, breakpoints: ${breakpointsList.join(', ')}`);
       hooks = {
         onNodeStart: async (nodeId, node, context) => {
           console.log(`[API] onNodeStart hook called for node: ${nodeId}`);
+          
+          // Check if this node should have a breakpoint
+          const controller = api.getController();
+          if (controller && breakpointsList.includes(nodeId)) {
+            const controllerBreakpoints = controller.getBreakpoints();
+            const state = controller.getState();
+            console.log(`[API] WARNING: onNodeStart called for node ${nodeId} which has a breakpoint!`);
+            console.log(`[API] Controller breakpoints: ${controllerBreakpoints.length > 0 ? controllerBreakpoints.join(', ') : 'none'}`);
+            console.log(`[API] Controller status: ${state.status}, currentNodeId: ${state.currentNodeId}`);
+          }
+          
           sendExecutionEvent(execId, 'nodeStart', {
             nodeId,
             nodeType: node.type,
             timestamp: Date.now(),
           });
+          
+          // Note: mcpGraph should check breakpoints internally before executing nodes
+          // If we reach here, the node is starting. The controller's breakpoint checking
+          // should have paused execution before this hook is called.
+          
           return true; // Continue execution
         },
         onNodeComplete: async (nodeId, node, input, output, duration) => {
@@ -94,8 +101,15 @@ export async function POST(
           });
         },
         onPause: async (nodeId, context) => {
+          console.log(`[API] onPause hook called for node: ${nodeId}`);
           sendExecutionEvent(execId, 'pause', {
             nodeId,
+            timestamp: Date.now(),
+          });
+          // Send stateUpdate to ensure UI status is updated
+          sendExecutionEvent(execId, 'stateUpdate', {
+            status: 'paused',
+            currentNodeId: nodeId,
             timestamp: Date.now(),
           });
         },
@@ -103,6 +117,8 @@ export async function POST(
           sendExecutionEvent(execId, 'resume', {
             timestamp: Date.now(),
           });
+          // Don't send stateUpdate here - onPause hook will tell us the actual state
+          // (During step, onResume is called but execution immediately pauses again)
         },
       };
     }
@@ -145,7 +161,38 @@ export async function POST(
     };
 
     console.log(`[API] Executing tool ${params.toolName} with executionId: ${executionId || 'none'}`);
-    const result = await api.executeTool(params.toolName, args, finalOptions);
+    const finalBreakpoints = finalOptions.breakpoints || [];
+    console.log(`[API] Final options breakpoints: ${finalBreakpoints.length > 0 ? finalBreakpoints.join(', ') : 'none'}`);
+    console.log(`[API] Final options object:`, JSON.stringify({ 
+      breakpoints: finalBreakpoints, 
+      enableTelemetry: finalOptions.enableTelemetry,
+      hasHooks: !!finalOptions.hooks
+    }, null, 2));
+    
+    // Start execution and get controller directly (mcpGraph 0.1.11+ returns both)
+    const { promise: executionPromise, controller } = api.executeTool(params.toolName, args, finalOptions);
+    
+    console.log(`[API] executeTool returned controller: ${controller ? 'present' : 'null'}, executionId: ${executionId || 'none'}`);
+    
+    // Register controller immediately if we have executionId and controller
+    if (executionId && controller) {
+      const execId = executionId; // Capture in const for closure
+      registerController(execId, controller);
+      console.log(`[API] Registered controller for executionId: ${execId}`);
+      
+      // Log breakpoints on controller
+      const controllerBreakpoints = controller.getBreakpoints();
+      console.log(`[API] Controller breakpoints: ${controllerBreakpoints.length > 0 ? controllerBreakpoints.join(', ') : 'none'}`);
+    } else {
+      if (!executionId) {
+        console.log(`[API] WARNING: No executionId provided, controller not registered`);
+      }
+      if (!controller) {
+        console.log(`[API] WARNING: Controller is null, cannot register. Hooks: ${!!finalOptions.hooks}, Breakpoints: ${finalBreakpoints.length > 0 ? finalBreakpoints.join(', ') : 'none'}`);
+      }
+    }
+    
+    const result = await executionPromise;
     console.log(`[API] Tool execution completed, result:`, result.result ? 'present' : 'missing');
 
     // Send completion event and close stream
@@ -164,11 +211,10 @@ export async function POST(
           : undefined,
         timestamp: Date.now(),
       });
-      // Close stream after a short delay to ensure final event is sent
-      setTimeout(() => {
-        console.log(`[API] Closing stream for executionId: ${execId}`);
-        closeExecutionStream(execId);
-      }, 100);
+      // Close stream immediately - enqueue is synchronous, event is already sent
+      console.log(`[API] Closing stream for executionId: ${execId}`);
+      closeExecutionStream(execId);
+      unregisterController(execId);
     }
 
     // Serialize telemetry Maps for JSON response
@@ -187,14 +233,36 @@ export async function POST(
   } catch (error) {
     console.error('Error executing tool:', error);
     
-    // Send error event if executionId exists
+    // Check if execution was stopped (not a real error)
+    const isStopped = error instanceof Error && error.message === 'Execution was stopped';
+    
     if (executionId) {
       const execId = executionId; // Capture in const for closure
-      sendExecutionEvent(execId, 'executionError', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: Date.now(),
+      
+      if (isStopped) {
+        // Execution was stopped by user - send stopped event, not error
+        sendExecutionEvent(execId, 'executionStopped', {
+          timestamp: Date.now(),
+        });
+      } else {
+        // Real error occurred
+        sendExecutionEvent(execId, 'executionError', {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: Date.now(),
+        });
+      }
+      
+      // Close stream immediately - enqueue is synchronous, event is already sent
+      closeExecutionStream(execId);
+      unregisterController(execId);
+    }
+    
+    // If stopped, return success (stopping is intentional)
+    if (isStopped) {
+      return NextResponse.json({ 
+        result: null,
+        stopped: true 
       });
-      setTimeout(() => closeExecutionStream(execId), 100);
     }
     
     return NextResponse.json(

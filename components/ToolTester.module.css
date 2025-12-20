@@ -114,11 +114,44 @@
   border-radius: 4px;
 }
 
-.result h3 {
+.resultHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.resultHeader h3 {
+  margin: 0;
   font-size: 1rem;
   font-weight: 600;
   color: #333;
+}
+
+.resultStats {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+}
+
+.statItem {
+  color: #666;
+}
+
+.statItem strong {
+  color: #333;
+  margin-right: 0.25rem;
+}
+
+.errorStat {
+  color: #d32f2f;
+}
+
+.errorStat strong {
+  color: #d32f2f;
 }
 
 .resultContent {
@@ -138,5 +171,17 @@
   padding: 2rem;
   text-align: center;
   color: #666;
+}
+
+.introspection {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.historySection,
+.telemetrySection {
+  width: 100%;
 }
 

@@ -1,23 +1,8 @@
 import { NextResponse } from 'next/server';
-import { McpGraphApi } from 'mcpgraph';
+import { getApi } from '@/lib/mcpGraphApi';
 
 // Force dynamic rendering - this route requires runtime config
 export const dynamic = 'force-dynamic';
-
-let apiInstance: McpGraphApi | null = null;
-
-function getApi(): McpGraphApi {
-  const configPath = process.env.MCPGRAPH_CONFIG_PATH;
-  if (!configPath) {
-    throw new Error('MCPGRAPH_CONFIG_PATH environment variable is not set');
-  }
-
-  if (!apiInstance) {
-    apiInstance = new McpGraphApi(configPath);
-  }
-
-  return apiInstance;
-}
 
 export async function GET() {
   try {

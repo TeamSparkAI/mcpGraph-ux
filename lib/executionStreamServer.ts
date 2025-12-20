@@ -1,12 +1,10 @@
 /**
  * Server-side execution stream management
  * Handles SSE streams for real-time execution updates
+ * Uses the same module scope as the API instance
  */
 
-// Store active execution streams (in production, use Redis or similar for multi-instance)
-const activeStreams = new Map<string, {
-  controller: ReadableStreamDefaultController;
-}>();
+import { getStreamsMap } from './mcpGraphApi';
 
 function sendEvent(controller: ReadableStreamDefaultController, event: string, data: any) {
   const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -18,24 +16,26 @@ function sendEvent(controller: ReadableStreamDefaultController, event: string, d
  */
 export function registerExecutionStream(executionId: string, controller: ReadableStreamDefaultController) {
   console.log(`[SSE] Registering stream for executionId: ${executionId}`);
-  activeStreams.set(executionId, { controller });
+  const streams = getStreamsMap();
+  streams.set(executionId, { controller });
   // Send initial connection event
   sendEvent(controller, 'connected', { executionId });
-  console.log(`[SSE] Registered stream for executionId: ${executionId}, total streams: ${activeStreams.size}`);
+  console.log(`[SSE] Registered stream for executionId: ${executionId}, total streams: ${streams.size}`);
 }
 
 /**
  * Unregister an execution stream
  */
 export function unregisterExecutionStream(executionId: string) {
-  activeStreams.delete(executionId);
+  getStreamsMap().delete(executionId);
 }
 
 /**
  * Send an event to a specific execution stream
  */
 export function sendExecutionEvent(executionId: string, event: string, data: any) {
-  const stream = activeStreams.get(executionId);
+  const streams = getStreamsMap();
+  const stream = streams.get(executionId);
   if (stream) {
     try {
       console.log(`[SSE] Sending event ${event} to execution ${executionId}`);
@@ -43,10 +43,10 @@ export function sendExecutionEvent(executionId: string, event: string, data: any
     } catch (error) {
       console.error('Error sending SSE event:', error);
       // Remove broken stream
-      activeStreams.delete(executionId);
+      streams.delete(executionId);
     }
   } else {
-    console.warn(`[SSE] No active stream found for executionId: ${executionId}. Active streams:`, Array.from(activeStreams.keys()));
+    console.warn(`[SSE] No active stream found for executionId: ${executionId}. Active streams:`, Array.from(streams.keys()));
   }
 }
 
@@ -54,14 +54,15 @@ export function sendExecutionEvent(executionId: string, event: string, data: any
  * Close an execution stream
  */
 export function closeExecutionStream(executionId: string) {
-  const stream = activeStreams.get(executionId);
+  const streams = getStreamsMap();
+  const stream = streams.get(executionId);
   if (stream) {
     try {
       stream.controller.close();
     } catch (error) {
       console.error('Error closing SSE stream:', error);
     }
-    activeStreams.delete(executionId);
+    streams.delete(executionId);
   }
 }
 

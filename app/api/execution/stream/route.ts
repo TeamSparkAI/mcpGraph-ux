@@ -1,8 +1,6 @@
 import { NextRequest } from 'next/server';
 import { registerExecutionStream, unregisterExecutionStream } from '@/lib/executionStreamServer';
 
-// Force dynamic rendering - this route requires runtime config
-export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const executionId = request.nextUrl.searchParams.get('executionId');

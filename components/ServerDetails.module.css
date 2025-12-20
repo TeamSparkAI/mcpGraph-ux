@@ -1,0 +1,116 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.title {
+  padding: 1rem 1.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 1px solid #e0e0e0;
+  background-color: #fafafa;
+}
+
+.configInfo {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.configName {
+  font-weight: 600;
+  color: #333;
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+}
+
+.configVersion {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.configDescription {
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+
+.servers {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.server {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.serverName {
+  font-weight: 600;
+  color: #2196f3;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.serverType,
+.serverCommand,
+.serverArgs,
+.serverCwd,
+.serverUrl,
+.serverHeaders {
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.serverType:last-child,
+.serverCommand:last-child,
+.serverArgs:last-child,
+.serverCwd:last-child,
+.serverUrl:last-child,
+.serverHeaders:last-child {
+  margin-bottom: 0;
+}
+
+.server:last-child {
+  border-bottom: none;
+}
+
+.label {
+  color: #666;
+  margin-right: 0.5rem;
+  font-weight: 500;
+}
+
+.code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.85rem;
+  color: #333;
+  word-break: break-all;
+}
+
+.headers {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.25rem;
+  margin-left: 0.5rem;
+}
+
+.header {
+  margin: 0;
+}
+
+.loading,
+.error {
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.error {
+  color: #d32f2f;
+}
+

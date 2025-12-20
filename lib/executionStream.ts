@@ -62,17 +62,18 @@ export class SSEExecutionStream implements ExecutionStream {
     };
 
     // Listen for specific event types
-    const eventTypes = [
-      'connected',
-      'nodeStart',
-      'nodeComplete',
-      'nodeError',
-      'pause',
-      'resume',
-      'executionComplete',
-      'executionError',
-      'stateUpdate',
-    ];
+            const eventTypes = [
+              'connected',
+              'nodeStart',
+              'nodeComplete',
+              'nodeError',
+              'pause',
+              'resume',
+              'executionComplete',
+              'executionError',
+              'executionStopped',
+              'stateUpdate',
+            ];
 
     eventTypes.forEach((eventType) => {
       this.eventSource?.addEventListener(eventType, (event: any) => {

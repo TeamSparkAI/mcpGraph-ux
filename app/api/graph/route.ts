@@ -1,23 +1,9 @@
 import { NextResponse } from 'next/server';
-import { McpGraphApi, type NodeDefinition } from 'mcpgraph';
+import { type NodeDefinition } from 'mcpgraph';
+import { getApi } from '@/lib/mcpGraphApi';
 
 // Force dynamic rendering - this route requires runtime config
 export const dynamic = 'force-dynamic';
-
-let apiInstance: McpGraphApi | null = null;
-
-function getApi(): McpGraphApi {
-  const configPath = process.env.MCPGRAPH_CONFIG_PATH;
-  if (!configPath) {
-    throw new Error('MCPGRAPH_CONFIG_PATH environment variable is not set');
-  }
-
-  if (!apiInstance) {
-    apiInstance = new McpGraphApi(configPath);
-  }
-
-  return apiInstance;
-}
 
 export async function GET() {
   try {
@@ -102,7 +88,37 @@ export async function GET() {
       }
     });
 
-    return NextResponse.json({ nodes, edges, tools: config.tools });
+    return NextResponse.json({ 
+      nodes, 
+      edges, 
+      tools: config.tools,
+      config: {
+        name: config.server.name,
+        version: config.server.version,
+        description: config.server.description,
+        servers: Object.entries(config.servers || {}).map(([name, server]: [string, any]) => {
+          const details: any = {
+            name,
+            type: server.type || 'stdio',
+          };
+          
+          if (server.type === 'stdio' || !server.type) {
+            details.command = server.command;
+            details.args = server.args || [];
+            if (server.cwd) {
+              details.cwd = server.cwd;
+            }
+          } else if (server.type === 'sse' || server.type === 'streamableHttp') {
+            details.url = server.url;
+            if (server.headers) {
+              details.headers = server.headers;
+            }
+          }
+          
+          return details;
+        }),
+      },
+    });
   } catch (error) {
     console.error('Error getting graph:', error);
     return NextResponse.json(

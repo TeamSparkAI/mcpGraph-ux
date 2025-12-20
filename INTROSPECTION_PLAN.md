@@ -4,369 +4,316 @@
 
 This document outlines the plan for implementing graph introspection and debugging features in mcpGraph UX, leveraging the new capabilities in mcpGraph 0.1.7+.
 
-## Current State
+## Current State (As-Built)
 
 The application currently provides:
-- Static graph visualization
-- Tool listing and testing
-- Basic execution with result display
+- ✅ Static graph visualization with automatic layout (dagre)
+- ✅ Tool listing and testing
+- ✅ Real-time execution visualization with SSE
+- ✅ Execution history display
+- ✅ Interactive debugging controls (pause, resume, step, stop)
+- ✅ Breakpoint management
+- ✅ Node data inspection
+- ✅ Execution summary stats (elapsed time, nodes executed, errors)
 
-## New Features to Implement
+## Implementation Status
 
-### 1. Real-time Execution Visualization
+### ✅ Phase 1: Foundation (Real-time Visualization) - COMPLETED
 
-**Goal**: Show execution progress in real-time as nodes execute
+**Status**: Fully implemented and working
 
-**Implementation**:
-- Add execution hooks (`onNodeStart`, `onNodeComplete`, `onNodeError`) to tool execution
-- Update graph visualization to show:
-  - Current executing node (highlighted/animated)
-  - Completed nodes (green checkmark)
-  - Failed nodes (red X)
-  - Node execution duration
-- Use Server-Sent Events (SSE) for real-time updates from server to client
-
-**Components**:
-- Extend `GraphVisualization` component to accept execution state
-- Add visual indicators for node status (running, completed, error, pending)
-- Add animation/transition effects for active nodes
-
-**API Changes**:
-- Modify `/api/tools/[toolName]` POST endpoint to accept execution options
-- Add new endpoint `/api/execution/state` to get current execution state
-- Add SSE endpoint `/api/execution/stream` for real-time execution event streaming
-
-### 2. Execution History & Timeline
-
-**Goal**: Display complete execution history with timing information
-
-**Implementation**:
-- Create new `ExecutionHistory` component showing:
-  - Chronological list of executed nodes
-  - Start/end times
-  - Duration for each node
-  - Input/output data for each node
-  - Error information if any
-- Add timeline visualization showing execution flow
-- Allow clicking on history items to highlight corresponding nodes in graph
+**Completed Items**:
+1. ✅ Upgraded to mcpGraph 0.1.9
+2. ✅ Added execution hooks (`onNodeStart`, `onNodeComplete`, `onNodeError`, `onPause`, `onResume`) to tool execution
+3. ✅ Implemented SSE endpoint `/api/execution/stream` for real-time event streaming
+4. ✅ Created client-side SSE connection abstraction (`lib/executionStream.ts`)
+5. ✅ Updated graph visualization to show execution state
+6. ✅ Added visual indicators (running, completed, error, paused, stopped)
+7. ✅ Connected SSE events to graph visualization updates
+8. ✅ Added node type icons (MCP, Entry, Exit, Transform, Switch)
 
 **Components**:
-- `ExecutionHistory.tsx` - List/timeline view of execution
-- `ExecutionTimeline.tsx` - Visual timeline component
-- Extend `ToolTester` to show history after execution
+- `lib/executionStream.ts` - SSE abstraction layer
+- `lib/executionStreamServer.ts` - Server-side SSE stream management
+- `app/api/execution/stream/route.ts` - SSE endpoint
+- `components/GraphVisualization.tsx` - Extended with execution state visualization
 
-**API Changes**:
-- Execution result already includes `executionHistory` - no API changes needed
-- May need to serialize Map objects in telemetry for JSON response
+**API Endpoints**:
+- ✅ `GET /api/execution/stream` - SSE stream for real-time execution updates
 
-### 3. Performance Telemetry Dashboard
+### ✅ Phase 2: History & Telemetry - COMPLETED (with modifications)
 
-**Goal**: Show performance metrics and statistics
+**Status**: Implemented with design changes
 
-**Implementation**:
-- Create `TelemetryDashboard` component displaying:
-  - Total execution duration
-  - Duration breakdown by node type
-  - Execution count per node type
-  - Error count
-  - Average duration per node type
-- Add charts/visualizations for metrics
-- Show slowest nodes
+**Completed Items**:
+1. ✅ Created `ExecutionHistory` component
+2. ✅ Integrated into `ToolTester`
+3. ✅ Execution history displays chronological list with input/output data
+4. ✅ Clicking history items highlights nodes in graph and opens inspector
 
-**Components**:
-- `TelemetryDashboard.tsx` - Metrics display component
-- Consider using a charting library (e.g., recharts) for visualizations
-
-**API Changes**:
-- Execution result already includes `telemetry` - may need to serialize Map objects
-
-### 4. Interactive Debugging Controls
-
-**Goal**: Provide step-through debugging capabilities
-
-**Implementation**:
-- Add debug controls UI:
-  - Play/Pause button
-  - Step button (step over next node)
-  - Resume button
-  - Breakpoint toggle (click nodes to set/clear breakpoints)
-- Show current execution state (status, current node)
-- Display execution context data when paused
-- Allow setting breakpoints on nodes in the graph
+**Design Changes from Original Plan**:
+- ❌ **TelemetryDashboard component removed** - Performance metrics dashboard was removed per user request
+- ✅ **Telemetry stats moved to results display** - Elapsed time, nodes executed, and error count now appear in the result header
+- ❌ **Timeline visualization deferred** - Visual timeline component was explicitly left as a future task
 
 **Components**:
-- `DebugControls.tsx` - Debug toolbar component
-- Extend `GraphVisualization` to support breakpoint indicators
-- Add click handlers on nodes to toggle breakpoints
-- Create `ExecutionStateViewer.tsx` - Show context data when paused
+- `components/ExecutionHistory.tsx` - Chronological execution history display
+- `components/ToolTester.tsx` - Integrated history and telemetry stats in results
 
 **API Changes**:
-- Add `/api/execution/controller` endpoint for pause/resume/step operations
-- Add `/api/execution/breakpoints` endpoint for managing breakpoints
-- Modify tool execution to stream events via SSE for real-time state updates
+- ✅ Execution result includes `executionHistory` and `telemetry`
+- ✅ Map objects serialized to JSON in API responses
 
-### 5. Node Data Inspection
+### ✅ Phase 3: Debugging Controls - COMPLETED
 
-**Goal**: Allow users to inspect input/output data for each node
+**Status**: Fully implemented and working
 
-**Implementation**:
-- Add node detail panel that shows:
-  - Node type and ID
-  - Input data (when available)
-  - Output data (when available)
-  - Execution duration
-  - Error information (if any)
-- Allow clicking on nodes in graph or history to view details
-- Show JSON data in formatted, expandable view
+**Completed Items**:
+1. ✅ Created `DebugControls` component
+2. ✅ Added execution controller API endpoints
+3. ✅ Implemented pause/resume/step/stop functionality
+4. ✅ Added breakpoint management UI
+5. ✅ Breakpoints displayed on graph nodes with clickable indicators
+6. ✅ All debug controls always visible (enabled/disabled based on state)
 
 **Components**:
-- `NodeInspector.tsx` - Panel for viewing node details
-- Extend `GraphVisualization` to support node click events
-- Add data viewer component for JSON display
+- `components/DebugControls.tsx` - Debug toolbar with Run, Step, Pause, Resume, Stop
+- `components/GraphVisualization.tsx` - Breakpoint indicators and toggle handlers
+- `lib/executionController.ts` - Server-side controller management
+- `app/api/execution/controller/route.ts` - Controller API endpoint
+- `app/api/execution/breakpoints/route.ts` - Breakpoint management API
 
-**API Changes**:
-- Execution history already includes input/output - no changes needed
+**API Endpoints**:
+- ✅ `POST /api/execution/controller` - Pause, resume, step, stop operations
+- ✅ `GET /api/execution/breakpoints` - Get current breakpoints
+- ✅ `POST /api/execution/breakpoints` - Set breakpoints
+- ✅ `DELETE /api/execution/breakpoints` - Clear all breakpoints
 
-## Implementation Phases
+**Features**:
+- Breakpoint indicators on graph nodes (red dot, clickable with larger hit target)
+- Step mode (start execution and pause at first node)
+- Stop functionality to cancel ongoing executions
+- Execution status display (running, paused, finished, error, stopped)
 
-### Phase 1: Foundation (Real-time Visualization)
-1. Upgrade to mcpGraph 0.1.7
-2. Add execution hooks to tool execution
-3. Implement SSE endpoint `/api/execution/stream` for real-time event streaming
-4. Create client-side SSE connection abstraction (for future flexibility)
-5. Update graph visualization to show execution state
-6. Add visual indicators (running, completed, error)
-7. Connect SSE events to graph visualization updates
-8. Test with simple graphs
+### ✅ Phase 4: Data Inspection - MOSTLY COMPLETED
 
-**Estimated Effort**: 3-4 days
+**Status**: Core functionality implemented, one feature deferred
 
-### Phase 2: History & Telemetry
-1. Create ExecutionHistory component
-2. Create TelemetryDashboard component
-3. Integrate into ToolTester
-4. Add timeline visualization
-5. Test with various graph types
+**Completed Items**:
+1. ✅ Created `NodeInspector` component
+2. ✅ Added node click handlers to graph visualization
+3. ✅ Implemented data viewer with JSON formatting
+4. ✅ Inspector displays node ID, type, duration, timestamps
+5. ✅ Inspector displays input/output data from execution history
+6. ✅ Inspector displays error information with stack traces
+7. ✅ Inspector accessible from both graph nodes and execution history
+8. ✅ Execution history lifted to main page for cross-component access
 
-**Estimated Effort**: 2-3 days
+**Components**:
+- `components/NodeInspector.tsx` - Node detail panel
+- `components/GraphVisualization.tsx` - Node click handlers
+- `app/page.tsx` - Execution history state management
 
-### Phase 3: Debugging Controls
-1. Create DebugControls component
-2. Add execution controller API endpoints
-3. Implement pause/resume/step functionality
-4. Add breakpoint management UI
-5. Test step-through debugging
+**Remaining Item**:
+- ⏳ **Context data viewing when paused** - Not yet implemented (requires API support for fetching execution context from controller when paused)
 
-**Estimated Effort**: 3-4 days
+### ⏳ Phase 5: Polish & Optimization - PARTIALLY COMPLETED
 
-### Phase 4: Data Inspection
-1. Create NodeInspector component
-2. Add node click handlers to graph
-3. Implement data viewer with JSON formatting
-4. Add context data viewing when paused
-5. Polish UI/UX
+**Status**: Some items completed, others remain
 
-**Estimated Effort**: 2-3 days
+**Completed Items**:
+1. ✅ Loading states for tool execution
+2. ✅ Error handling for execution failures
+3. ✅ UI/UX refinements (consistent styling, layout improvements)
+4. ✅ Server details display
+5. ✅ Execution history state management across components
 
-### Phase 5: Polish & Optimization
-1. Add loading states
-2. Error handling improvements
-3. Performance optimization
-4. UI/UX refinements
-5. Documentation updates
+**Remaining Items**:
+- ⏳ Performance optimization for large graphs
+- ⏳ Additional error handling improvements
+- ⏳ Documentation updates
 
-**Estimated Effort**: 1-2 days
-
-## Technical Considerations
+## Technical Implementation Details
 
 ### Real-time Updates
 
-**Server-Sent Events (SSE)**
+**Server-Sent Events (SSE)** - ✅ Implemented
 - Stream execution events in real-time from server to client
-- Use browser's native `EventSource` API (no extra dependencies)
+- Uses browser's native `EventSource` API
 - Automatic reconnection on connection loss
-- One-way communication (server → client) perfect for execution monitoring
-- Control operations (pause/resume/step) use regular HTTP POST endpoints
-- Pros: Simple, real-time, efficient, built-in browser support, automatic reconnection
-- Cons: One-way only (but we don't need bidirectional for this use case)
+- One-way communication (server → client) for execution monitoring
+- Control operations (pause/resume/step/stop) use regular HTTP POST endpoints
 
 **Implementation**:
 - Server: Stream events via SSE endpoint `/api/execution/stream`
-- Client: Use `EventSource` to receive events and update UI
-- Events include: `nodeStart`, `nodeComplete`, `nodeError`, `pause`, `resume`, `stateUpdate`
-- Abstract connection layer for easy migration if needed later
-
-**Recommendation**: Use SSE - it's the best fit for this use case
+- Client: `SSEExecutionStream` class wraps `EventSource` for abstraction
+- Events: `connected`, `nodeStart`, `nodeComplete`, `nodeError`, `pause`, `resume`, `executionComplete`, `executionError`, `executionStopped`, `stateUpdate`
 
 ### State Management
 
-- Use React state for execution state
-- Consider using a state management library (Zustand, Redux) if state becomes complex
-- Store execution history and telemetry in component state or context
-
-### SSE Connection Management
-
-- Create abstraction layer for execution stream connection:
-  ```typescript
-  interface ExecutionStream {
-    connect(callback: (event: ExecutionEvent) => void): void;
-    disconnect(): void;
-    isConnected(): boolean;
-  }
-  ```
-- This allows easy migration to WebSocket or polling later if needed
-- Handle connection lifecycle (connect on execution start, disconnect on completion/error)
-- Implement automatic reconnection logic
-- Clean up connections on component unmount
+- ✅ React state for execution state
+- ✅ Execution history lifted to main page component for cross-component access
+- ✅ Execution state managed in `ToolTester` and synced to parent via callbacks
 
 ### Data Serialization
 
-- Telemetry uses `Map` objects which don't serialize to JSON
-- Need to convert Maps to objects/arrays in API responses:
-  ```typescript
-  const telemetryJson = {
-    ...telemetry,
-    nodeDurations: Object.fromEntries(telemetry.nodeDurations),
-    nodeCounts: Object.fromEntries(telemetry.nodeCounts)
-  };
-  ```
+- ✅ Telemetry `Map` objects converted to plain objects in API responses
+- ✅ Execution history serialized correctly with input/output data
 
 ### Execution Controller Lifecycle
 
-- Controller is only available during execution
-- Need to handle cases where execution completes before user can interact
-- Show appropriate UI states (not available, available, execution complete)
+- ✅ Controller registered after execution starts
+- ✅ Controller available during execution for pause/resume/step/stop
+- ✅ Controller unregistered on execution completion or stop
 
-## API Endpoints to Add/Modify
+## API Endpoints (As-Built)
 
-### New Endpoints
+### Implemented Endpoints
 
-1. **GET /api/execution/stream** (SSE)
+1. **GET /api/execution/stream** (SSE) ✅
    - Server-Sent Events stream for real-time execution updates
-   - Streams events: `nodeStart`, `nodeComplete`, `nodeError`, `pause`, `resume`, `stateUpdate`
-   - Each event contains relevant execution state data
-   - Connection automatically reconnects if dropped
+   - Streams events: `nodeStart`, `nodeComplete`, `nodeError`, `pause`, `resume`, `executionComplete`, `executionError`, `executionStopped`, `stateUpdate`
 
-2. **GET /api/execution/state** (optional, for initial state)
-   - Returns current execution state (if execution in progress)
-   - Returns null if no execution
-   - May be useful for initial state before SSE connection is established
+2. **POST /api/execution/controller** ✅
+   - Unified endpoint for pause, resume, step, and stop operations
+   - Actions: `pause`, `resume`, `step`, `stop`
 
-2. **POST /api/execution/controller/pause**
-   - Pause current execution
-   - Returns success/error
+3. **GET /api/execution/breakpoints** ✅
+   - Get current breakpoints for an execution
 
-3. **POST /api/execution/controller/resume**
-   - Resume paused execution
-   - Returns success/error
-
-4. **POST /api/execution/controller/step**
-   - Step to next node
-   - Returns success/error
-
-5. **GET /api/execution/breakpoints**
-   - Get current breakpoints
-
-6. **POST /api/execution/breakpoints**
+4. **POST /api/execution/breakpoints** ✅
    - Set breakpoints (array of node IDs)
 
-7. **DELETE /api/execution/breakpoints**
+5. **DELETE /api/execution/breakpoints** ✅
    - Clear all breakpoints
 
 ### Modified Endpoints
 
-1. **POST /api/tools/[toolName]**
-   - Accept `ExecutionOptions` in request body:
+1. **POST /api/tools/[toolName]** ✅
+   - Accepts `ExecutionOptions` in request body:
      ```typescript
      {
        args: Record<string, unknown>,
+       executionId?: string,
        options?: {
-         hooks?: ExecutionHooks,
          breakpoints?: string[],
          enableTelemetry?: boolean
        }
      }
      ```
-   - Return execution result with history and telemetry
-   - Handle Map serialization for telemetry
+   - Returns execution result with history and telemetry
+   - Handles Map serialization for telemetry
+   - Streams events via SSE if `executionId` provided
 
-## UI/UX Design Considerations
+## UI/UX Implementation (As-Built)
 
-### Graph Visualization Updates
+### Graph Visualization
 
 - **Node States**:
-  - Pending: Gray/default
-  - Running: Blue with pulse animation
-  - Completed: Green with checkmark
-  - Error: Red with X icon
-  - Paused: Yellow/orange highlight
+  - ✅ Pending: Gray/default
+  - ✅ Running: Yellow with pulse animation
+  - ✅ Completed: Green with checkmark
+  - ✅ Error: Red with X icon
+  - ✅ Paused: Cyan highlight
+  - ✅ Stopped: Gray
 
 - **Breakpoints**:
-  - Red dot/badge on nodes with breakpoints
-  - Click node to toggle breakpoint
+  - ✅ Red dot indicator on nodes with breakpoints
+  - ✅ Clickable breakpoint toggle (larger hit target, fixed position)
+  - ✅ Visual feedback on hover
 
-- **Current Node**:
-  - Highlighted border
-  - Pulse animation
-  - Tooltip showing execution info
+- **Node Types**:
+  - ✅ Icons displayed next to node labels (MCP, Entry, Exit, Transform, Switch)
 
-### Layout Changes
+- **Node Interaction**:
+  - ✅ Click nodes to open inspector
+  - ✅ Click history items to highlight nodes and open inspector
 
-- Add execution history panel (sidebar or bottom panel)
-- Add debug controls toolbar (top of graph area)
-- Add node inspector panel (right side or modal)
-- Consider collapsible panels for better space usage
+### Layout
+
+- ✅ Execution history panel below tool tester
+- ✅ Debug controls toolbar integrated into tool tester
+- ✅ Node inspector panel below tool tester (when node selected)
+- ✅ Server details displayed in sidebar above tools list
 
 ### User Flow
 
-1. User selects tool and enters parameters
-2. User can optionally set breakpoints on nodes
-3. User clicks "Test Tool" or "Debug Tool"
-4. Execution starts, graph updates in real-time
-5. If paused, user can inspect state, step, or resume
-6. After completion, history and telemetry are displayed
-7. User can click on history items or nodes to inspect data
+1. ✅ User selects tool and enters parameters
+2. ✅ User can optionally set breakpoints on nodes
+3. ✅ User clicks "Run" or "Step" button
+4. ✅ Execution starts, graph updates in real-time
+5. ✅ If paused, user can inspect state, step, or resume
+6. ✅ After completion, history and summary stats are displayed
+7. ✅ User can click on history items or nodes to inspect data
 
-## Testing Strategy
+## Remaining Tasks
 
-1. **Unit Tests**:
-   - Test execution hooks integration
-   - Test state management
-   - Test data serialization
+### High Priority
 
-2. **Integration Tests**:
-   - Test full execution flow with hooks
-   - Test pause/resume/step operations
-   - Test breakpoint functionality
+1. **Context Data Viewing When Paused** ⏳
+   - Fetch execution context from controller when execution is paused
+   - Display context data in NodeInspector when paused
+   - May require new API endpoint or extension to existing controller endpoint
+   - **Status**: Deferred - requires investigation of mcpGraph API capabilities
 
-3. **Manual Testing**:
-   - Test with various graph types (simple, complex, with switches)
-   - Test error scenarios
-   - Test performance with large graphs
-   - Test concurrent executions (should be prevented)
+### Medium Priority
 
-## Dependencies to Add
+2. **Visual Timeline Component** ⏳
+   - Create visual timeline showing execution flow over time
+   - Display as alternative view to execution history list
+   - **Status**: Explicitly deferred as future task per user request
 
-- Consider adding charting library for telemetry visualization:
-  - `recharts` (React charting library)
-  - Or `chart.js` with React wrapper
+3. **Performance Optimization** ⏳
+   - Optimize rendering for large graphs
+   - Optimize SSE event handling for high-frequency updates
+   - **Status**: Not yet addressed
 
-## Future Enhancements
+### Low Priority / Future Enhancements
 
-- Conditional breakpoints (break when expression is true)
-- Watch expressions (monitor specific values)
-- Execution replay from history
-- Compare multiple executions
-- Export execution history/telemetry
-- OpenTelemetry integration
+4. **Conditional Breakpoints**
+   - Break when expression evaluates to true
+   - Requires expression evaluation engine
+
+5. **Watch Expressions**
+   - Monitor specific values during execution
+   - Display in debug panel
+
+6. **Execution Replay**
+   - Replay execution from history
+   - Step through historical execution
+
+7. **Compare Multiple Executions**
+   - Side-by-side comparison of execution results
+   - Diff view for execution history
+
+8. **Export Execution History/Telemetry**
+   - Export to JSON/CSV
+   - Share execution traces
+
+9. **OpenTelemetry Integration**
+   - Export telemetry to OpenTelemetry format
+   - Integration with observability platforms
+
+10. **Documentation Updates**
+    - Update README with new features
+    - Add usage examples
+    - Document API endpoints
 
 ## Success Criteria
 
-- Users can see real-time execution progress in the graph
-- Users can pause, resume, and step through execution
-- Users can set breakpoints on nodes
-- Users can view complete execution history with timing
-- Users can inspect node input/output data
-- Users can view performance telemetry
-- All features work reliably with various graph types
+- ✅ Users can see real-time execution progress in the graph
+- ✅ Users can pause, resume, and step through execution
+- ✅ Users can set breakpoints on nodes
+- ✅ Users can view complete execution history with timing
+- ✅ Users can inspect node input/output data
+- ✅ Users can view execution summary (elapsed time, nodes, errors)
+- ✅ All features work reliably with various graph types
+- ⏳ Users can view execution context when paused (deferred)
 
+## Notes
+
+- **TelemetryDashboard removed**: The detailed performance metrics dashboard was removed per user request. Summary stats (elapsed time, nodes executed, errors) are now displayed in the results header.
+- **Timeline visualization deferred**: Visual timeline component was explicitly left as a future task.
+- **Context viewing deferred**: Execution context viewing when paused requires investigation of mcpGraph API capabilities.
+- **mcpGraph version**: Currently using mcpGraph 0.1.9
+- **Build status**: All implemented features compile and build successfully
