@@ -126,26 +126,8 @@ export default function DebugControls({
 
   return (
     <div className={styles.container}>
-      {(status === 'running' || status === 'paused' || status === 'finished' || status === 'error' || status === 'stopped') && (
-        <div className={styles.statusBar}>
-          <div className={styles.statusInfo}>
-            <span className={styles.statusLabel}>Status:</span>
-            <span className={`${styles.statusBadge} ${styles[status]}`}>
-              {status.toUpperCase()}
-            </span>
-            {currentNodeId && (
-              <>
-                <span className={styles.separator}>•</span>
-                <span className={styles.currentNode}>
-                  Current: <code>{currentNodeId}</code>
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className={styles.controls}>
+      <div className={styles.controlsRow}>
+        <div className={styles.controls}>
         <button
           onClick={handleRun}
           disabled={disabled || isProcessing || status === 'running' || status === 'paused'}
@@ -186,6 +168,24 @@ export default function DebugControls({
         >
           ⏹ Stop
         </button>
+        </div>
+        
+        {(status === 'running' || status === 'paused' || status === 'finished' || status === 'error' || status === 'stopped') && (
+          <div className={styles.statusInfo}>
+            {currentNodeId && (
+              <>
+                <span className={styles.currentNode}>
+                  Current: <code>{currentNodeId}</code>
+                </span>
+                <span className={styles.separator}>•</span>
+              </>
+            )}
+            <span className={styles.statusLabel}>Status:</span>
+            <span className={`${styles.statusBadge} ${styles[status]}`}>
+              {status.toUpperCase()}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

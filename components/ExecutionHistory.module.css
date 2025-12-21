@@ -1,22 +1,12 @@
 .container {
   width: 100%;
-  max-height: 600px;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
   background: white;
+  overflow: hidden;
 }
 
-.title {
-  padding: 12px 16px;
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  border-bottom: 1px solid #e0e0e0;
-  background: #f5f5f5;
-  border-radius: 8px 8px 0 0;
-}
 
 .empty {
   padding: 24px;
@@ -28,6 +18,7 @@
 .list {
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .item {
@@ -200,5 +191,78 @@
 
 .metadata div {
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+/* Result item - styled to stand out at the bottom */
+.resultItem {
+  border-top: 3px solid #4caf50;
+  background: linear-gradient(to bottom, #f1f8f4 0%, #ffffff 100%);
+  margin-top: auto;
+}
+
+.resultHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 2px solid #4caf50;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.resultTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #2e7d32;
+}
+
+.resultIcon {
+  font-size: 18px;
+  color: #4caf50;
+  font-weight: bold;
+}
+
+.resultStats {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.statItem {
+  color: #666;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+}
+
+.statItem strong {
+  color: #333;
+  margin-right: 4px;
+}
+
+.errorStat {
+  color: #d32f2f;
+}
+
+.resultContent {
+  padding: 16px;
+  background: white;
+}
+
+.resultPre {
+  margin: 0;
+  padding: 12px;
+  background: #fafafa;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #333;
 }
 

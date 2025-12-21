@@ -231,7 +231,7 @@ function NodeTypeIcon({ nodeType }: { nodeType: string }) {
   }
 }
 
-// Custom node component with left/right handles for horizontal flow
+// Custom node component with top/bottom handles for vertical flow
 function CustomNode({ data }: { data: any }) {
   const nodeType = data.nodeType || 'unknown';
   const executionState = data.executionState as NodeExecutionState | undefined;
@@ -297,7 +297,7 @@ function CustomNode({ data }: { data: any }) {
       {!isEntry && (
         <Handle
           type="target"
-          position={Position.Left}
+          position={Position.Top}
           style={{ background: '#555' }}
         />
       )}
@@ -313,11 +313,6 @@ function CustomNode({ data }: { data: any }) {
           <span style={{ fontSize: '10px', opacity: 0.7 }}>
             ({data.duration}ms)
           </span>
-        )}
-        
-        {/* Status indicators (running/error) - not the checkmark */}
-        {(executionState === 'running' || executionState === 'error') && statusIndicator && (
-          <span>{statusIndicator}</span>
         )}
         
         {/* Breakpoint button */}
@@ -370,15 +365,15 @@ function CustomNode({ data }: { data: any }) {
           </button>
         )}
         
-        {/* Checkmark for completion at far right */}
-        {executionState === 'completed' && (
-          <span style={{ marginLeft: 'auto' }}>✓</span>
+        {/* Status indicators (running/completed/error) at far right */}
+        {statusIndicator && (
+          <span style={{ marginLeft: 'auto' }}>{statusIndicator}</span>
         )}
       </div>
       {!isExit && (
         <Handle
           type="source"
-          position={Position.Right}
+          position={Position.Bottom}
           style={{ background: '#555' }}
         />
       )}
@@ -397,9 +392,9 @@ const layoutNodes = (nodes: Node[], edges: Edge[]): Node[] => {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ 
-    rankdir: 'LR', // Left to right layout
-    nodesep: 100,  // Horizontal spacing between nodes
-    ranksep: 150,  // Vertical spacing between ranks
+    rankdir: 'TB', // Top to bottom layout
+    nodesep: 50,   // Vertical spacing between nodes
+    ranksep: 75,   // Horizontal spacing between ranks
     marginx: 50,
     marginy: 50,
   });

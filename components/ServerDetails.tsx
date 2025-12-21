@@ -22,25 +22,37 @@ interface ServerDetailsProps {
   };
 }
 
-export default function ServerDetails({ config }: ServerDetailsProps) {
+// Server config section
+export function ServerConfig({ config }: ServerDetailsProps) {
+  if (!config || !config.name) {
+    return null;
+  }
+
+  return (
+    <div className={styles.container}>
+      <h2 className={styles.title}>Server</h2>
+      <div className={styles.configInfo}>
+        <div className={styles.configName}>{config.name}</div>
+        {config.version && (
+          <div className={styles.configVersion}>v{config.version}</div>
+        )}
+        {config.description && (
+          <div className={styles.configDescription}>{config.description}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// MCP Servers section
+export function McpServers({ config }: ServerDetailsProps) {
   if (!config || !config.servers || config.servers.length === 0) {
     return null;
   }
 
   return (
     <div className={styles.container}>
-      <h2 className={styles.title}>Server Details</h2>
-      {config.name && (
-        <div className={styles.configInfo}>
-          <div className={styles.configName}>{config.name}</div>
-          {config.version && (
-            <div className={styles.configVersion}>v{config.version}</div>
-          )}
-          {config.description && (
-            <div className={styles.configDescription}>{config.description}</div>
-          )}
-        </div>
-      )}
+      <h2 className={styles.title}>MCP Servers</h2>
       <div className={styles.servers}>
         {config.servers.map((server, index) => (
           <div key={index} className={styles.server}>
@@ -89,6 +101,16 @@ export default function ServerDetails({ config }: ServerDetailsProps) {
         ))}
       </div>
     </div>
+  );
+}
+
+// Legacy default export for backwards compatibility
+export default function ServerDetails({ config }: ServerDetailsProps) {
+  return (
+    <>
+      <ServerConfig config={config} />
+      <McpServers config={config} />
+    </>
   );
 }
 

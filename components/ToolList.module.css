@@ -1,8 +1,7 @@
 .container {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 0;
+  flex-shrink: 0;
 }
 
 .title {
@@ -15,8 +14,8 @@
 }
 
 .toolList {
-  flex: 1;
   overflow-y: auto;
+  max-height: 400px;
 }
 
 .toolItem {

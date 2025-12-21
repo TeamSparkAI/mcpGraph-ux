@@ -18,9 +18,15 @@ export interface NodeExecutionRecord {
 interface ExecutionHistoryProps {
   history: NodeExecutionRecord[];
   onNodeClick?: (nodeId: string) => void;
+  result?: unknown;
+  telemetry?: {
+    totalDuration: number;
+    nodeCounts: Record<string, number>;
+    errorCount: number;
+  };
 }
 
-export default function ExecutionHistory({ history, onNodeClick }: ExecutionHistoryProps) {
+export default function ExecutionHistory({ history, onNodeClick, result, telemetry }: ExecutionHistoryProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
   const toggleExpand = (nodeId: string) => {
@@ -57,10 +63,9 @@ export default function ExecutionHistory({ history, onNodeClick }: ExecutionHist
     }
   };
 
-  if (history.length === 0) {
+  if (history.length === 0 && !result) {
     return (
       <div className={styles.container}>
-        <h3 className={styles.title}>Execution History</h3>
         <div className={styles.empty}>No execution history available</div>
       </div>
     );
@@ -68,7 +73,6 @@ export default function ExecutionHistory({ history, onNodeClick }: ExecutionHist
 
   return (
     <div className={styles.container}>
-      <h3 className={styles.title}>Execution History</h3>
       <div className={styles.list}>
         {history.map((record, index) => {
           const isExpanded = expandedNodes.has(record.nodeId);
@@ -157,6 +161,36 @@ export default function ExecutionHistory({ history, onNodeClick }: ExecutionHist
           );
         })}
       </div>
+      
+      {/* Result display at the bottom - always expanded and styled to stand out */}
+      {result !== null && result !== undefined && (
+        <div className={styles.resultItem}>
+          <div className={styles.resultHeader}>
+            <div className={styles.resultTitle}>
+              <span className={styles.resultIcon}>✓</span>
+              <strong>Final Result</strong>
+            </div>
+            {telemetry && (
+              <div className={styles.resultStats}>
+                <span className={styles.statItem}>
+                  <strong>Elapsed:</strong> {formatDuration(telemetry.totalDuration)}
+                </span>
+                <span className={styles.statItem}>
+                  <strong>Nodes:</strong> {Object.values(telemetry.nodeCounts).reduce((sum, count) => sum + count, 0)}
+                </span>
+                {telemetry.errorCount > 0 && (
+                  <span className={`${styles.statItem} ${styles.errorStat}`}>
+                    <strong>Errors:</strong> {telemetry.errorCount}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          <div className={styles.resultContent}>
+            <pre className={styles.resultPre}>{formatJSON(result)}</pre>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

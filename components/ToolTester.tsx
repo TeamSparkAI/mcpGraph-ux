@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import styles from './ToolTester.module.css';
 import { SSEExecutionStream, generateExecutionId, type ExecutionEvent } from '../lib/executionStream';
 import type { NodeExecutionStatus } from './GraphVisualization';
@@ -64,6 +64,13 @@ interface ToolTesterProps {
   breakpoints?: Set<string>;
   onBreakpointsChange?: (breakpoints: Set<string>) => void;
   onExecutionHistoryChange?: (history: NodeExecutionRecord[]) => void;
+  onResultChange?: (result: unknown, telemetry: ExecutionTelemetry | null) => void;
+  showExecutionHistory?: boolean; // Option to show/hide execution history in ToolTester
+  onExecutionStatusChange?: (status: ExecutionStatus) => void;
+  onExecutionIdChange?: (executionId: string | null) => void;
+  showDebugControls?: boolean; // Option to show/hide debug controls in ToolTester
+  onRunRequest?: (handler: () => void) => void; // Callback to expose run handler
+  onStepRequest?: (handler: () => void) => void; // Callback to expose step handler
 }
 
 
@@ -90,6 +97,13 @@ export default function ToolTester({
   breakpoints: externalBreakpoints,
   onBreakpointsChange,
   onExecutionHistoryChange,
+  onResultChange,
+  showExecutionHistory = true, // Default to true for backward compatibility
+  onExecutionStatusChange,
+  onExecutionIdChange,
+  showDebugControls = true, // Default to true for backward compatibility
+  onRunRequest,
+  onStepRequest,
 }: ToolTesterProps) {
   const [toolInfo, setToolInfo] = useState<ToolInfo | null>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -106,6 +120,44 @@ export default function ToolTester({
     console.log(`[ToolTester] Execution status changed to: ${executionStatus}, currentNodeId: ${currentNodeId}`);
   }, [executionStatus, currentNodeId]);
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
+
+  // Notify parent of execution status changes
+  useEffect(() => {
+    onExecutionStatusChange?.(executionStatus);
+  }, [executionStatus, onExecutionStatusChange]);
+
+  // Notify parent of execution ID changes
+  useEffect(() => {
+    onExecutionIdChange?.(currentExecutionId);
+  }, [currentExecutionId, onExecutionIdChange]);
+
+  // Store handleSubmit in a ref so handlers always call the latest version
+  const handleSubmitRef = useRef<((e?: React.FormEvent, startPaused?: boolean) => Promise<void>) | null>(null);
+  
+  // Expose run and step handlers to parent - only once
+  const handlersExposedRef = useRef(false);
+  
+  // Expose handlers immediately after component mounts
+  useEffect(() => {
+    if (!handlersExposedRef.current && (onRunRequest || onStepRequest)) {
+      if (onRunRequest) {
+        onRunRequest(() => {
+          if (handleSubmitRef.current) {
+            handleSubmitRef.current(undefined, false);
+          }
+        });
+      }
+      if (onStepRequest) {
+        onStepRequest(() => {
+          if (handleSubmitRef.current) {
+            handleSubmitRef.current(undefined, true);
+          }
+        });
+      }
+      handlersExposedRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount
   
   // Fetch execution history from controller
   const fetchExecutionHistory = async (execId: string) => {
@@ -456,6 +508,9 @@ export default function ToolTester({
           }
           if (event.data.telemetry) {
             setTelemetry(event.data.telemetry);
+            onResultChange?.(event.data.result, event.data.telemetry);
+          } else {
+            onResultChange?.(event.data.result, null);
           }
           setExecutionStatus('finished');
           setCurrentNodeId(null);
@@ -607,6 +662,31 @@ export default function ToolTester({
       executionStreamRef.current = null;
     }
   };
+  
+  // Update ref immediately when handleSubmit is defined
+  handleSubmitRef.current = handleSubmit;
+  
+  // Expose handlers immediately after handleSubmit is defined
+  useEffect(() => {
+    if (!handlersExposedRef.current && handleSubmitRef.current && (onRunRequest || onStepRequest)) {
+      if (onRunRequest) {
+        onRunRequest(() => {
+          if (handleSubmitRef.current) {
+            handleSubmitRef.current(undefined, false);
+          }
+        });
+      }
+      if (onStepRequest) {
+        onStepRequest(() => {
+          if (handleSubmitRef.current) {
+            handleSubmitRef.current(undefined, true);
+          }
+        });
+      }
+      handlersExposedRef.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount
 
   // Toggle breakpoint handler
   const handleToggleBreakpoint = async (nodeId: string) => {
@@ -808,15 +888,17 @@ export default function ToolTester({
 
       </form>
 
-      <DebugControls
-        executionId={currentExecutionId}
-        status={executionStatus}
-        currentNodeId={currentNodeId}
-        onStatusChange={setExecutionStatus}
-        onRun={() => handleSubmit(undefined, false)}
-        onStepFromStart={() => handleSubmit(undefined, true)}
-        disabled={loading}
-      />
+      {showDebugControls && (
+        <DebugControls
+          executionId={currentExecutionId}
+          status={executionStatus}
+          currentNodeId={currentNodeId}
+          onStatusChange={setExecutionStatus}
+          onRun={() => handleSubmit(undefined, false)}
+          onStepFromStart={() => handleSubmit(undefined, true)}
+          disabled={loading}
+        />
+      )}
 
       {error && (
         <div className={styles.error}>
@@ -824,33 +906,8 @@ export default function ToolTester({
         </div>
       )}
 
-      {result && (
-        <div className={styles.result}>
-          <div className={styles.resultHeader}>
-            <h3>Result</h3>
-            {telemetry && (
-              <div className={styles.resultStats}>
-                <span className={styles.statItem}>
-                  <strong>Elapsed Time:</strong> {formatDuration(telemetry.totalDuration)}
-                </span>
-                <span className={styles.statItem}>
-                  <strong>Nodes Executed:</strong> {Object.values(telemetry.nodeCounts).reduce((sum, count) => sum + count, 0)}
-                </span>
-                {telemetry.errorCount > 0 && (
-                  <span className={`${styles.statItem} ${styles.errorStat}`}>
-                    <strong>Errors:</strong> {telemetry.errorCount}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          <pre className={styles.resultContent}>
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        </div>
-      )}
 
-      {executionHistory.length > 0 && (
+      {showExecutionHistory && executionHistory.length > 0 && (
         <div className={styles.introspection}>
           <div className={styles.historySection}>
             <ExecutionHistory
