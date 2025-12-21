@@ -23,39 +23,47 @@ export async function GET() {
         position: { x: 0, y: 0 }, // Will be calculated by layout algorithm
       };
 
-      // Add specific data based on node type
-      if (node.type === 'entry' || node.type === 'exit') {
+      // Add specific data based on node type using type guards
+      if (node.type === 'entry' && 'tool' in node) {
         return {
           ...baseNode,
           data: {
             ...baseNode.data,
-            tool: (node as any).tool,
+            tool: node.tool,
           },
         };
-      } else if (node.type === 'mcp') {
+      } else if (node.type === 'exit' && 'tool' in node) {
         return {
           ...baseNode,
           data: {
             ...baseNode.data,
-            server: (node as any).server,
-            tool: (node as any).tool,
-            args: (node as any).args,
+            tool: node.tool,
           },
         };
-      } else if (node.type === 'transform') {
+      } else if (node.type === 'mcp' && 'server' in node && 'tool' in node && 'args' in node) {
         return {
           ...baseNode,
           data: {
             ...baseNode.data,
-            transform: (node as any).transform,
+            server: node.server,
+            tool: node.tool,
+            args: node.args,
           },
         };
-      } else if (node.type === 'switch') {
+      } else if (node.type === 'transform' && 'transform' in node) {
         return {
           ...baseNode,
           data: {
             ...baseNode.data,
-            conditions: (node as any).conditions,
+            transform: node.transform,
+          },
+        };
+      } else if (node.type === 'switch' && 'conditions' in node) {
+        return {
+          ...baseNode,
+          data: {
+            ...baseNode.data,
+            conditions: node.conditions,
           },
         };
       }
@@ -76,8 +84,7 @@ export async function GET() {
       }
       
       if (node.type === 'switch' && 'conditions' in node) {
-        const switchNode = node as any;
-        switchNode.conditions.forEach((condition: any, index: number) => {
+        node.conditions.forEach((condition, index: number) => {
           edges.push({
             id: `${node.id}-${condition.target}-${index}`,
             source: node.id,
@@ -96,8 +103,16 @@ export async function GET() {
         name: config.server.name,
         version: config.server.version,
         description: config.server.description,
-        servers: Object.entries(config.servers || {}).map(([name, server]: [string, any]) => {
-          const details: any = {
+        servers: Object.entries(config.servers || {}).map(([name, server]) => {
+          const details: {
+            name: string;
+            type: string;
+            command?: string;
+            args?: string[];
+            cwd?: string;
+            url?: string;
+            headers?: Record<string, string>;
+          } = {
             name,
             type: server.type || 'stdio',
           };

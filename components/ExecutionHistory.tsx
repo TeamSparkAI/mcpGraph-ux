@@ -7,11 +7,12 @@ export interface NodeExecutionRecord {
   nodeId: string;
   nodeType: string;
   startTime: number;
-  endTime: number;
-  duration: number;
+  endTime?: number; // Optional for pending/running nodes
+  duration?: number; // Optional for pending/running nodes
   input: unknown;
-  output: unknown;
+  output?: unknown; // Optional for pending/running nodes
   error?: Error;
+  executionIndex?: number; // For tracking specific node instances
 }
 
 interface ExecutionHistoryProps {
@@ -91,7 +92,11 @@ export default function ExecutionHistory({ history, onNodeClick }: ExecutionHist
                   {hasError && <span className={styles.errorBadge}>ERROR</span>}
                 </div>
                 <div className={styles.timing}>
-                  <span className={styles.duration}>{formatDuration(record.duration)}</span>
+                  {record.duration !== undefined ? (
+                    <span className={styles.duration}>{formatDuration(record.duration)}</span>
+                  ) : (
+                    <span className={styles.duration} style={{ fontStyle: 'italic', color: '#666' }}>pending</span>
+                  )}
                   <span className={styles.time}>{formatTime(record.startTime)}</span>
                 </div>
                 <button className={styles.expandButton}>
@@ -120,18 +125,31 @@ export default function ExecutionHistory({ history, onNodeClick }: ExecutionHist
                       <strong>Input:</strong>
                       <pre className={styles.jsonData}>{formatJSON(record.input)}</pre>
                     </div>
-                    {!hasError && (
+                    {!hasError && record.output !== undefined && (
                       <div className={styles.dataItem}>
                         <strong>Output:</strong>
                         <pre className={styles.jsonData}>{formatJSON(record.output)}</pre>
+                      </div>
+                    )}
+                    {!hasError && record.output === undefined && (
+                      <div className={styles.dataItem}>
+                        <strong>Output:</strong>
+                        <div style={{ fontStyle: 'italic', color: '#666' }}>Pending execution</div>
                       </div>
                     )}
                   </div>
                   
                   <div className={styles.metadata}>
                     <div>Start: {formatTime(record.startTime)}</div>
-                    <div>End: {formatTime(record.endTime)}</div>
-                    <div>Duration: {formatDuration(record.duration)}</div>
+                    {record.endTime !== undefined && (
+                      <div>End: {formatTime(record.endTime)}</div>
+                    )}
+                    {record.duration !== undefined && (
+                      <div>Duration: {formatDuration(record.duration)}</div>
+                    )}
+                    {(record.endTime === undefined || record.duration === undefined) && (
+                      <div style={{ fontStyle: 'italic', color: '#666' }}>Status: Pending</div>
+                    )}
                   </div>
                 </div>
               )}

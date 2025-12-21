@@ -5,7 +5,6 @@ import GraphVisualization, { type NodeExecutionStatus } from '@/components/Graph
 import ToolList from '@/components/ToolList';
 import ToolTester from '@/components/ToolTester';
 import ServerDetails from '@/components/ServerDetails';
-import NodeInspector, { type NodeInspectionData } from '@/components/NodeInspector';
 import type { NodeExecutionRecord } from '@/components/ExecutionHistory';
 import styles from './page.module.css';
 
@@ -26,7 +25,6 @@ export default function Home() {
   const [highlightedNode, setHighlightedNode] = useState<string | null>(null);
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set());
-  const [inspectedNode, setInspectedNode] = useState<NodeInspectionData | null>(null);
   const [executionHistory, setExecutionHistory] = useState<NodeExecutionRecord[]>([]);
 
   const [serverDetails, setServerDetails] = useState<any>(null);
@@ -121,36 +119,9 @@ export default function Home() {
                   setBreakpoints(newBreakpoints);
                 }}
                 onNodeClick={(nodeId) => {
-                  // Find node data from execution history or graph
-                  const nodeStatus = executionState.get(nodeId);
-                  const node = graphData.nodes.find(n => n.id === nodeId);
-                  
-                  // Try to find the node in execution history first (has input/output)
-                  const historyRecord = executionHistory.find(r => r.nodeId === nodeId);
-                  
-                  if (historyRecord) {
-                    // Use execution history data (has input/output)
-                    setInspectedNode({
-                      nodeId: historyRecord.nodeId,
-                      nodeType: historyRecord.nodeType,
-                      input: historyRecord.input,
-                      output: historyRecord.output,
-                      duration: historyRecord.duration,
-                      startTime: historyRecord.startTime,
-                      endTime: historyRecord.endTime,
-                      error: historyRecord.error ? { message: historyRecord.error.message || 'Unknown error', stack: historyRecord.error.stack } : undefined,
-                    });
-                  } else if (nodeStatus || node) {
-                    // Fallback to execution state data (no input/output)
-                    setInspectedNode({
-                      nodeId,
-                      nodeType: (node?.data as any)?.nodeType || 'unknown',
-                      duration: nodeStatus?.duration,
-                      startTime: nodeStatus?.startTime,
-                      endTime: nodeStatus?.endTime,
-                      error: nodeStatus?.error ? { message: nodeStatus.error } : undefined,
-                    });
-                  }
+                  // Just highlight the node when clicked
+                  setHighlightedNode(nodeId);
+                  setTimeout(() => setHighlightedNode(null), 2000);
                 }}
               />
             )}
@@ -166,20 +137,11 @@ export default function Home() {
                 onCurrentNodeChange={setCurrentNodeId}
                 breakpoints={breakpoints}
                 onBreakpointsChange={setBreakpoints}
-                onNodeInspect={setInspectedNode}
                 onExecutionHistoryChange={setExecutionHistory}
               />
             </div>
           )}
 
-          {inspectedNode && (
-            <div className={styles.inspectorSection}>
-              <NodeInspector 
-                data={inspectedNode}
-                onClose={() => setInspectedNode(null)}
-              />
-            </div>
-          )}
         </div>
       </div>
     </div>

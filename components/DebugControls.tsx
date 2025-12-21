@@ -156,7 +156,7 @@ export default function DebugControls({
         </button>
         <button
           onClick={status === 'paused' ? handleStep : (onStepFromStart || handleRun)}
-          disabled={isProcessing || (status !== 'paused' && status !== 'not_started') || (status === 'not_started' && disabled)}
+          disabled={isProcessing || (status !== 'paused' && status !== 'not_started' && status !== 'finished' && status !== 'error' && status !== 'stopped') || (status === 'not_started' && disabled)}
           className={styles.button}
           title={status === 'paused' ? 'Step to next node' : 'Start execution and pause at first node'}
         >

@@ -18,7 +18,7 @@ import dagre from 'dagre';
 import 'reactflow/dist/style.css';
 import styles from './GraphVisualization.module.css';
 
-export type NodeExecutionState = 'pending' | 'running' | 'completed' | 'error';
+export type NodeExecutionState = 'pending' | 'running' | 'completed' | 'error' | 'paused' | 'stopped';
 
 export interface NodeExecutionStatus {
   nodeId: string;
@@ -27,6 +27,17 @@ export interface NodeExecutionStatus {
   endTime?: number;
   duration?: number;
   error?: string;
+}
+
+interface NodeData {
+  label: string;
+  nodeType: string;
+  tool?: string;
+  server?: string;
+  args?: Record<string, unknown>;
+  transform?: { expr: string };
+  conditions?: Array<{ rule?: unknown; target: string }>;
+  [key: string]: unknown;
 }
 
 interface GraphVisualizationProps {
@@ -137,8 +148,8 @@ const getNodeStyle = (nodeType: string, executionState?: NodeExecutionState) => 
 // Node type icon component
 function NodeTypeIcon({ nodeType }: { nodeType: string }) {
   const iconStyle: React.CSSProperties = {
-    width: '1em',
-    height: '1em',
+    width: '1.5em',
+    height: '1.5em',
     color: '#000',
     flexShrink: 0,
     display: 'inline-block',
@@ -150,10 +161,10 @@ function NodeTypeIcon({ nodeType }: { nodeType: string }) {
         <svg
           fill="currentColor"
           fillRule="evenodd"
-          height="1em"
+          height="1.5em"
           style={iconStyle}
           viewBox="0 0 24 24"
-          width="1em"
+          width="1.5em"
           xmlns="http://www.w3.org/2000/svg"
         >
           <title>ModelContextProtocol</title>
@@ -165,52 +176,54 @@ function NodeTypeIcon({ nodeType }: { nodeType: string }) {
       return (
         <svg
           fill="currentColor"
-          height="1em"
+          height="1.5em"
           style={iconStyle}
           viewBox="0 0 24 24"
-          width="1em"
+          width="1.5em"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <path d="M8 5v14l11-7z" />
+          <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
+          <path d="M10 8l6 4-6 4V8z" />
         </svg>
       );
     case 'exit':
       return (
         <svg
           fill="currentColor"
-          height="1em"
+          height="1.5em"
           style={iconStyle}
           viewBox="0 0 24 24"
-          width="1em"
+          width="1.5em"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+          <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
+          <rect x="9" y="9" width="6" height="6" fill="currentColor"/>
         </svg>
       );
     case 'transform':
       return (
         <svg
           fill="currentColor"
-          height="1em"
+          height="1.5em"
           style={iconStyle}
           viewBox="0 0 24 24"
-          width="1em"
+          width="1.5em"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94L14.4 2.81c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+          <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" />
         </svg>
       );
     case 'switch':
       return (
         <svg
           fill="currentColor"
-          height="1em"
+          height="1.5em"
           style={iconStyle}
           viewBox="0 0 24 24"
-          width="1em"
+          width="1.5em"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 6h4v12H4V6zm6 12V6h10v12H10z" />
+          <path d="M12 2L2 12l10 10 10-10L12 2zm0 2.83L19.17 12 12 19.17 4.83 12 12 4.83z" />
         </svg>
       );
     default:
@@ -288,15 +301,26 @@ function CustomNode({ data }: { data: any }) {
           style={{ background: '#555' }}
         />
       )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-        {statusIndicator && <span>{statusIndicator}</span>}
-        <span>{data.label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', width: '100%' }}>
+        {/* Node type icon at far left */}
         <NodeTypeIcon nodeType={nodeType} />
+        
+        {/* Label */}
+        <span>{data.label}</span>
+        
+        {/* Duration */}
         {data.duration !== undefined && (
           <span style={{ fontSize: '10px', opacity: 0.7 }}>
             ({data.duration}ms)
           </span>
         )}
+        
+        {/* Status indicators (running/error) - not the checkmark */}
+        {(executionState === 'running' || executionState === 'error') && statusIndicator && (
+          <span>{statusIndicator}</span>
+        )}
+        
+        {/* Breakpoint button */}
         {onToggleBreakpoint && (
           <button
             onClick={handleBreakpointClick}
@@ -345,6 +369,11 @@ function CustomNode({ data }: { data: any }) {
             </span>
           </button>
         )}
+        
+        {/* Checkmark for completion at far right */}
+        {executionState === 'completed' && (
+          <span style={{ marginLeft: 'auto' }}>✓</span>
+        )}
       </div>
       {!isExit && (
         <Handle
@@ -378,7 +407,8 @@ const layoutNodes = (nodes: Node[], edges: Edge[]): Node[] => {
   // Add nodes to dagre graph
   nodes.forEach(node => {
     // Estimate node dimensions (dagre needs width/height)
-    const nodeType = (node.data as any)?.nodeType || 'unknown';
+    const nodeData = node.data as NodeData;
+    const nodeType = nodeData?.nodeType || 'unknown';
     const label = node.id;
     // Rough estimate: ~10px per character + padding
     const width = Math.max(150, label.length * 8 + 40);
@@ -397,7 +427,8 @@ const layoutNodes = (nodes: Node[], edges: Edge[]): Node[] => {
 
   // Map dagre positions back to React Flow nodes
   const positionedNodes = nodes.map(node => {
-    const nodeType = (node.data as any)?.nodeType || 'unknown';
+    const nodeData = node.data as NodeData;
+    const nodeType = nodeData?.nodeType || 'unknown';
     const dagreNode = g.node(node.id);
     
     return {
@@ -504,17 +535,23 @@ export default function GraphVisualization({
   const filteredNodes = useMemo(() => {
     if (!selectedTool) return flowNodes;
     return flowNodes.filter(node => {
-      const data = node.data as any;
+      const data = node.data as NodeData;
       return (
         (data.nodeType === 'entry' && data.tool === selectedTool) ||
         (data.nodeType === 'exit' && data.tool === selectedTool) ||
         flowEdges.some(edge => {
           // Include nodes that are reachable from entry or lead to exit
           const entryNode = flowNodes.find(
-            n => (n.data as any)?.nodeType === 'entry' && (n.data as any)?.tool === selectedTool
+            n => {
+              const nData = n.data as NodeData;
+              return nData?.nodeType === 'entry' && nData?.tool === selectedTool;
+            }
           );
           const exitNode = flowNodes.find(
-            n => (n.data as any)?.nodeType === 'exit' && (n.data as any)?.tool === selectedTool
+            n => {
+              const nData = n.data as NodeData;
+              return nData?.nodeType === 'exit' && nData?.tool === selectedTool;
+            }
           );
           
           if (!entryNode || !exitNode) return false;

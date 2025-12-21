@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { type ExecutionOptions, type ExecutionHooks } from 'mcpgraph';
+import { type ExecutionOptions, type ExecutionHooks, type ExecutionResult } from 'mcpgraph';
 import { getApi } from '@/lib/mcpGraphApi';
 import { sendExecutionEvent, closeExecutionStream } from '@/lib/executionStreamServer';
-import { registerController, unregisterController } from '@/lib/executionController';
+import { registerController, unregisterController, getController } from '@/lib/executionController';
 
 
 export async function GET(
@@ -54,11 +54,11 @@ export async function POST(
       const execId = executionId; // Capture in const for closure
       console.log(`[API] Setting up hooks for executionId: ${execId}, breakpoints: ${breakpointsList.join(', ')}`);
       hooks = {
-        onNodeStart: async (nodeId, node, context) => {
-          console.log(`[API] onNodeStart hook called for node: ${nodeId}`);
+        onNodeStart: async (executionIndex, nodeId, node, context) => {
+          console.log(`[API] onNodeStart hook called for node: ${nodeId}, executionIndex: ${executionIndex}`);
           
           // Check if this node should have a breakpoint
-          const controller = api.getController();
+          const controller = getController(execId);
           if (controller && breakpointsList.includes(nodeId)) {
             const controllerBreakpoints = controller.getBreakpoints();
             const state = controller.getState();
@@ -70,6 +70,8 @@ export async function POST(
           sendExecutionEvent(execId, 'nodeStart', {
             nodeId,
             nodeType: node.type,
+            executionIndex,
+            context, // Send context so client can determine input
             timestamp: Date.now(),
           });
           
@@ -79,20 +81,23 @@ export async function POST(
           
           return true; // Continue execution
         },
-        onNodeComplete: async (nodeId, node, input, output, duration) => {
+        onNodeComplete: async (executionIndex, nodeId, node, input, output, duration) => {
           sendExecutionEvent(execId, 'nodeComplete', {
             nodeId,
             nodeType: node.type,
+            executionIndex,
             input,
             output,
             duration,
             timestamp: Date.now(),
           });
         },
-        onNodeError: async (nodeId, node, error, context) => {
+        onNodeError: async (executionIndex, nodeId, node, error, context) => {
           sendExecutionEvent(execId, 'nodeError', {
             nodeId,
             nodeType: node.type,
+            executionIndex,
+            input: context, // Include context as input (mcpGraph 0.1.19+ provides actual context)
             error: {
               message: error.message,
               stack: error.stack,
@@ -100,10 +105,20 @@ export async function POST(
             timestamp: Date.now(),
           });
         },
-        onPause: async (nodeId, context) => {
-          console.log(`[API] onPause hook called for node: ${nodeId}`);
+        onPause: async (executionIndex, nodeId, context) => {
+          console.log(`[API] onPause hook called for node: ${nodeId}, executionIndex: ${executionIndex}`);
+          
+          // Look up node type from config
+          const api = getApi();
+          const config = api.getConfig();
+          const node = config.nodes.find(n => n.id === nodeId);
+          const nodeType = node?.type || 'unknown';
+          
           sendExecutionEvent(execId, 'pause', {
             nodeId,
+            nodeType,
+            executionIndex,
+            context, // Include context so client can show input for pending node
             timestamp: Date.now(),
           });
           // Send stateUpdate to ensure UI status is updated
@@ -117,8 +132,6 @@ export async function POST(
           sendExecutionEvent(execId, 'resume', {
             timestamp: Date.now(),
           });
-          // Don't send stateUpdate here - onPause hook will tell us the actual state
-          // (During step, onResume is called but execution immediately pauses again)
         },
       };
     }
@@ -131,24 +144,24 @@ export async function POST(
             ...hooks,
             ...executionOptions.hooks,
             // Merge hook functions - call both
-            onNodeStart: async (nodeId, node, context) => {
+            onNodeStart: async (executionIndex, nodeId, node, context) => {
               const hook1 = hooks?.onNodeStart;
               const hook2 = executionOptions.hooks?.onNodeStart;
-              const result1 = hook1 ? await hook1(nodeId, node, context) : true;
-              const result2 = hook2 ? await hook2(nodeId, node, context) : true;
+              const result1 = hook1 ? await hook1(executionIndex, nodeId, node, context) : true;
+              const result2 = hook2 ? await hook2(executionIndex, nodeId, node, context) : true;
               return result1 && result2;
             },
-            onNodeComplete: async (nodeId, node, input, output, duration) => {
-              await hooks?.onNodeComplete?.(nodeId, node, input, output, duration);
-              await executionOptions.hooks?.onNodeComplete?.(nodeId, node, input, output, duration);
+            onNodeComplete: async (executionIndex, nodeId, node, input, output, duration) => {
+              await hooks?.onNodeComplete?.(executionIndex, nodeId, node, input, output, duration);
+              await executionOptions.hooks?.onNodeComplete?.(executionIndex, nodeId, node, input, output, duration);
             },
-            onNodeError: async (nodeId, node, error, context) => {
-              await hooks?.onNodeError?.(nodeId, node, error, context);
-              await executionOptions.hooks?.onNodeError?.(nodeId, node, error, context);
+            onNodeError: async (executionIndex, nodeId, node, error, context) => {
+              await hooks?.onNodeError?.(executionIndex, nodeId, node, error, context);
+              await executionOptions.hooks?.onNodeError?.(executionIndex, nodeId, node, error, context);
             },
-            onPause: async (nodeId, context) => {
-              await hooks?.onPause?.(nodeId, context);
-              await executionOptions.hooks?.onPause?.(nodeId, context);
+            onPause: async (executionIndex, nodeId, context) => {
+              await hooks?.onPause?.(executionIndex, nodeId, context);
+              await executionOptions.hooks?.onPause?.(executionIndex, nodeId, context);
             },
             onResume: async () => {
               await hooks?.onResume?.();
@@ -199,9 +212,37 @@ export async function POST(
     if (executionId) {
       const execId = executionId; // Capture in const for closure
       console.log(`[API] Sending executionComplete event for executionId: ${execId}`);
+      
+      // Fetch input contexts for all execution records BEFORE unregistering controller
+      // Use the controller's context directly since api.getContextForExecution() requires active controller
+      const controller = getController(execId);
+      console.log(`[API] Fetching input contexts for ${result.executionHistory?.length || 0} records`);
+      const executionHistoryWithInput = (result.executionHistory || []).map((record) => {
+        console.log(`[API] Processing record: nodeId=${record.nodeId}, executionIndex=${record.executionIndex}`);
+        try {
+          let context: Record<string, unknown> | null = null;
+          if (controller) {
+            const state = controller.getState();
+            context = state.context.getContextForExecution(record.executionIndex);
+          } else {
+            console.warn(`[API] Controller not found for ${execId}, trying API method`);
+            context = api.getContextForExecution(record.executionIndex);
+          }
+          console.log(`[API] Got context for ${record.nodeId}:`, context ? 'present' : 'null', context);
+          return {
+            ...record,
+            input: context || undefined,
+          };
+        } catch (error) {
+          console.error(`[API] Error getting context for executionIndex ${record.executionIndex}:`, error);
+          return record;
+        }
+      });
+      console.log(`[API] Final execution history with input:`, JSON.stringify(executionHistoryWithInput, null, 2));
+
       sendExecutionEvent(execId, 'executionComplete', {
         result: result.result,
-        executionHistory: result.executionHistory,
+        executionHistory: executionHistoryWithInput,
         telemetry: result.telemetry
           ? {
               ...result.telemetry,

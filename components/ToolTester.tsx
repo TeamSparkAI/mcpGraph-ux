@@ -7,13 +7,51 @@ import type { NodeExecutionStatus } from './GraphVisualization';
 import ExecutionHistory, { type NodeExecutionRecord } from './ExecutionHistory';
 import DebugControls, { type ExecutionStatus } from './DebugControls';
 
+// Type definitions for SSE event data
+interface NodeCompleteEventData {
+  nodeId: string;
+  nodeType: string;
+  executionIndex: number;
+  input: unknown;
+  output: unknown;
+  duration: number;
+  timestamp: number;
+}
+
+interface NodeErrorEventData {
+  nodeId: string;
+  nodeType: string;
+  executionIndex: number;
+  input: unknown; // mcpGraph 0.1.19+ provides actual context
+  error: {
+    message: string;
+    stack?: string;
+  };
+  timestamp: number;
+}
+
+interface PauseEventData {
+  nodeId: string;
+  nodeType: string;
+  executionIndex: number;
+  context: Record<string, unknown>;
+  timestamp: number;
+}
+
+interface NodeStartEventData {
+  nodeId: string;
+  nodeType: string;
+  executionIndex: number;
+  context: Record<string, unknown>;
+  timestamp: number;
+}
+
 export interface ExecutionTelemetry {
   totalDuration: number;
   nodeDurations: Record<string, number>;
   nodeCounts: Record<string, number>;
   errorCount: number;
 }
-import type { NodeInspectionData } from './NodeInspector';
 
 // Re-export ExecutionStatus for consistency
 export type { ExecutionStatus };
@@ -25,7 +63,6 @@ interface ToolTesterProps {
   onCurrentNodeChange?: (nodeId: string | null) => void;
   breakpoints?: Set<string>;
   onBreakpointsChange?: (breakpoints: Set<string>) => void;
-  onNodeInspect?: (data: NodeInspectionData) => void;
   onExecutionHistoryChange?: (history: NodeExecutionRecord[]) => void;
 }
 
@@ -52,7 +89,6 @@ export default function ToolTester({
   onCurrentNodeChange,
   breakpoints: externalBreakpoints,
   onBreakpointsChange,
-  onNodeInspect,
   onExecutionHistoryChange,
 }: ToolTesterProps) {
   const [toolInfo, setToolInfo] = useState<ToolInfo | null>(null);
@@ -70,6 +106,103 @@ export default function ToolTester({
     console.log(`[ToolTester] Execution status changed to: ${executionStatus}, currentNodeId: ${currentNodeId}`);
   }, [executionStatus, currentNodeId]);
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
+  
+  // Fetch execution history from controller
+  const fetchExecutionHistory = async (execId: string) => {
+    try {
+      // Use history-with-indices to get executionIndex for each record
+      const response = await fetch(`/api/execution/history-with-indices?executionId=${encodeURIComponent(execId)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.history && Array.isArray(data.history)) {
+          // Update history and fetch input for any records missing it
+          setExecutionHistory(data.history);
+          onExecutionHistoryChange?.(data.history);
+          
+          // Fetch input for any records that don't have it yet
+          data.history.forEach((record: NodeExecutionRecord & { executionIndex?: number }) => {
+            if (record.executionIndex !== undefined && !record.input) {
+              fetchNodeInput(execId, record.nodeId, record.executionIndex);
+            }
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching execution history:', err);
+    }
+  };
+  
+  // Fetch input context for a specific node using executionIndex
+  const fetchNodeInput = async (execId: string, nodeId: string, executionIndex: number) => {
+    try {
+      console.log(`[ToolTester] Fetching input for nodeId=${nodeId}, executionIndex=${executionIndex}`);
+      const response = await fetch(`/api/execution/context?executionId=${encodeURIComponent(execId)}&nodeId=${encodeURIComponent(nodeId)}&sequenceId=${executionIndex}`);
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[ToolTester] Got context response for ${nodeId}:`, data);
+        if (data.context) {
+          // Update the history record with the proper input
+          // Match by executionIndex if available, otherwise by nodeId
+          setExecutionHistory(prev => {
+            const newHistory = prev.map(record => {
+              // Match by executionIndex if available (from final history)
+              const recordWithIndex = record as NodeExecutionRecord & { executionIndex?: number };
+              if (recordWithIndex.executionIndex === executionIndex) {
+                console.log(`[ToolTester] Updating input for record with executionIndex=${executionIndex}`);
+                return { ...record, input: data.context };
+              }
+              // Fallback: match by nodeId if no executionIndex (progressive history)
+              if (!recordWithIndex.executionIndex && record.nodeId === nodeId && !record.input) {
+                return { ...record, input: data.context };
+              }
+              return record;
+            });
+            onExecutionHistoryChange?.(newHistory);
+            return newHistory;
+          });
+        } else {
+          console.warn(`[ToolTester] No context returned for ${nodeId} at executionIndex=${executionIndex}`);
+        }
+      } else {
+        console.error(`[ToolTester] Failed to fetch context for ${nodeId}: ${response.status} ${response.statusText}`);
+      }
+    } catch (err) {
+      console.error('Error fetching node input context:', err);
+    }
+  };
+  
+  // Fetch input context for a node after it completes
+  // This gets the executionIndex by fetching the execution history from the API
+  const fetchNodeInputAfterComplete = async (execId: string, nodeId: string) => {
+    try {
+      // Fetch the execution history which should have executionIndex for each record
+      // We'll find the most recent record for this nodeId and use its executionIndex
+      const response = await fetch(`/api/execution/history-with-indices?executionId=${encodeURIComponent(execId)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.history && Array.isArray(data.history)) {
+          // Find the most recent record for this nodeId
+          // The history is in execution order, so the last matching record is the most recent
+          const records = data.history as Array<{ nodeId: string; executionIndex: number }>;
+          let matchingRecord: { nodeId: string; executionIndex: number } | undefined;
+          
+          // Find the last (most recent) record for this nodeId
+          for (let i = records.length - 1; i >= 0; i--) {
+            if (records[i].nodeId === nodeId) {
+              matchingRecord = records[i];
+              break;
+            }
+          }
+          
+          if (matchingRecord) {
+            await fetchNodeInput(execId, nodeId, matchingRecord.executionIndex);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching node input after complete:', err);
+    }
+  };
   const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set());
   const executionStreamRef = useRef<SSEExecutionStream | null>(null);
   const executionStateRef = useRef<Map<string, NodeExecutionStatus>>(new Map());
@@ -157,16 +290,60 @@ export default function ToolTester({
             sseReadyResolve = null;
           }
           break;
-        case 'nodeStart':
-          setCurrentNodeId(event.data.nodeId);
-          onCurrentNodeChange?.(event.data.nodeId);
-          state.set(event.data.nodeId, {
-            nodeId: event.data.nodeId,
+        case 'nodeStart': {
+          const nodeStartData = event.data as NodeStartEventData;
+          const existing = state.get(nodeStartData.nodeId);
+          state.set(nodeStartData.nodeId, {
+            nodeId: nodeStartData.nodeId,
             state: 'running',
-            startTime: event.data.timestamp,
+            startTime: existing?.startTime || nodeStartData.timestamp,
+            endTime: undefined,
+            duration: undefined,
+          });
+          if (nodeStartData.nodeId) {
+            setCurrentNodeId(nodeStartData.nodeId);
+            onCurrentNodeChange?.(nodeStartData.nodeId);
+          }
+          
+          // Update or create history record for this node with input from context
+          // If we already created a pending record from pause event, update it with nodeType
+          // Otherwise, create a new running record
+          const executionIndex = nodeStartData.executionIndex;
+          setExecutionHistory(prev => {
+            const existingIndex = prev.findIndex(
+              r => r.nodeId === nodeStartData.nodeId && r.executionIndex === executionIndex
+            );
+            
+            if (existingIndex >= 0) {
+              // Update existing record (created from pause event)
+              const updated = [...prev];
+              updated[existingIndex] = {
+                ...updated[existingIndex],
+                nodeType: nodeStartData.nodeType,
+                startTime: nodeStartData.timestamp,
+                input: nodeStartData.context, // Update with context from nodeStart (more accurate)
+              };
+              onExecutionHistoryChange?.(updated);
+              return updated;
+            } else {
+              // Create new running record
+              const newHistory = [...prev, {
+                nodeId: nodeStartData.nodeId,
+                nodeType: nodeStartData.nodeType,
+                startTime: nodeStartData.timestamp,
+                endTime: undefined, // Not completed yet
+                duration: undefined, // Not completed yet
+                input: nodeStartData.context, // Use context as input
+                output: undefined, // Not completed yet
+                executionIndex,
+              }];
+              onExecutionHistoryChange?.(newHistory);
+              return newHistory;
+            }
           });
           break;
-        case 'nodeComplete':
+        }
+        case 'nodeComplete': {
           const existing = state.get(event.data.nodeId);
           state.set(event.data.nodeId, {
             nodeId: event.data.nodeId,
@@ -175,8 +352,58 @@ export default function ToolTester({
             endTime: event.data.timestamp,
             duration: event.data.duration,
           });
+          // Build history record immediately for progressive display
+          // Use input from the event if available, otherwise fetch it
+          const eventData = event.data as NodeCompleteEventData;
+          const startTime = existing?.startTime || eventData.timestamp;
+          const executionIndex = eventData.executionIndex;
+          const inputFromEvent = eventData.input;
+          
+          setExecutionHistory(prev => {
+            // Check if we already have a record for this node (created from pause/nodeStart)
+            const existingIndex = prev.findIndex(
+              r => r.nodeId === eventData.nodeId && r.executionIndex === executionIndex
+            );
+            
+            if (existingIndex >= 0) {
+              // Update existing record (created from pause/nodeStart)
+              const updated = [...prev];
+              updated[existingIndex] = {
+                ...updated[existingIndex],
+                nodeType: eventData.nodeType,
+                startTime,
+                endTime: eventData.timestamp,
+                duration: eventData.duration,
+                input: inputFromEvent, // Use input from event
+                output: eventData.output,
+                executionIndex,
+              };
+              onExecutionHistoryChange?.(updated);
+              return updated;
+            } else {
+              // Create new record
+              const newHistory = [...prev, {
+                nodeId: eventData.nodeId,
+                nodeType: eventData.nodeType,
+                startTime,
+                endTime: eventData.timestamp,
+                duration: eventData.duration,
+                input: inputFromEvent, // Use input from event
+                output: eventData.output,
+                executionIndex,
+              }];
+              onExecutionHistoryChange?.(newHistory);
+              return newHistory;
+            }
+          });
+          
+          // If input wasn't in the event, fetch it using executionIndex
+          if (currentExecutionId && inputFromEvent === undefined) {
+            fetchNodeInput(currentExecutionId, eventData.nodeId, executionIndex);
+          }
           break;
-        case 'nodeError':
+        }
+        case 'nodeError': {
           const existingError = state.get(event.data.nodeId);
           state.set(event.data.nodeId, {
             nodeId: event.data.nodeId,
@@ -185,13 +412,47 @@ export default function ToolTester({
             endTime: event.data.timestamp,
             error: event.data.error?.message || 'Unknown error',
           });
+          // Build history record immediately for progressive display
+          // Use input from the event (mcpGraph 0.1.19+ provides actual context)
+          const eventData = event.data as NodeErrorEventData;
+          const errorStartTime = existingError?.startTime || eventData.timestamp;
+          const executionIndex = eventData.executionIndex;
+          const inputFromEvent = eventData.input; // Context is now always provided
+          
+          setExecutionHistory(prev => {
+            const newHistory = [...prev, {
+              nodeId: eventData.nodeId,
+              nodeType: eventData.nodeType,
+              startTime: errorStartTime,
+              endTime: eventData.timestamp,
+              duration: eventData.timestamp - errorStartTime,
+              input: inputFromEvent, // Use input from event
+              output: undefined,
+              error: {
+                message: eventData.error.message,
+                stack: eventData.error.stack,
+              } as Error,
+              executionIndex,
+            }];
+            onExecutionHistoryChange?.(newHistory);
+            return newHistory;
+          });
+          
+          // If input wasn't in the event, fetch it using executionIndex
+          if (currentExecutionId && inputFromEvent === undefined) {
+            fetchNodeInput(currentExecutionId, eventData.nodeId, executionIndex);
+          }
           break;
+        }
         case 'executionComplete':
           console.log(`[ToolTester] Execution complete, result:`, event.data.result);
           setResult(event.data.result);
+          // The execution history from the API should already have input populated
+          // since we fetch it before unregistering the controller
           if (event.data.executionHistory) {
-            setExecutionHistory(event.data.executionHistory);
-            onExecutionHistoryChange?.(event.data.executionHistory);
+            const finalHistory = event.data.executionHistory as Array<NodeExecutionRecord & { executionIndex?: number }>;
+            setExecutionHistory(finalHistory);
+            onExecutionHistoryChange?.(finalHistory);
           }
           if (event.data.telemetry) {
             setTelemetry(event.data.telemetry);
@@ -224,14 +485,49 @@ export default function ToolTester({
           executionStreamRef.current = null;
           setCurrentExecutionId(null);
           break;
-        case 'pause':
-          console.log(`[ToolTester] Pause event received for node: ${event.data.nodeId}`);
+        case 'pause': {
+          const pauseData = event.data as PauseEventData;
+          console.log(`[ToolTester] Pause event received for node: ${pauseData.nodeId}`);
           setExecutionStatus('paused');
-          if (event.data.nodeId) {
-            setCurrentNodeId(event.data.nodeId);
-            onCurrentNodeChange?.(event.data.nodeId);
+          if (pauseData.nodeId) {
+            setCurrentNodeId(pauseData.nodeId);
+            onCurrentNodeChange?.(pauseData.nodeId);
+          }
+          
+          // Create a pending history record for the node we're paused on
+          // This allows the user to see the node's input even though it hasn't completed yet
+          const executionIndex = pauseData.executionIndex;
+          const existingRecord = executionHistory.find(
+            r => r.nodeId === pauseData.nodeId && r.executionIndex === executionIndex
+          );
+          
+          if (!existingRecord && pauseData.context) {
+            // Extract input from context - the context contains all available data at this point
+            // For the node about to execute, we need to determine what its input would be
+            // The context is the execution context, which includes outputs from previous nodes
+            // For now, we'll use the context as the input (it represents what's available to this node)
+            setExecutionHistory(prev => {
+              const newHistory = [...prev, {
+                nodeId: pauseData.nodeId,
+                nodeType: pauseData.nodeType, // Use nodeType from pause event
+                startTime: pauseData.timestamp,
+                endTime: undefined, // Not completed yet
+                duration: undefined, // Not completed yet
+                input: pauseData.context, // Use context as input (what's available to this node)
+                output: undefined, // Not completed yet
+                executionIndex,
+              }];
+              onExecutionHistoryChange?.(newHistory);
+              return newHistory;
+            });
+          }
+          
+          // Fetch execution history from controller on pause to get any completed nodes
+          if (currentExecutionId) {
+            fetchExecutionHistory(currentExecutionId);
           }
           break;
+        }
         case 'resume':
           // Don't set status here - stateUpdate is the authoritative source
           // The resume event is just informational, stateUpdate will follow with the actual status
@@ -562,21 +858,6 @@ export default function ToolTester({
               onNodeClick={(nodeId) => {
                 onNodeHighlight?.(nodeId);
                 setTimeout(() => onNodeHighlight?.(null), 2000); // Clear highlight after 2 seconds
-                
-                // Find the node in execution history and show inspector
-                const record = executionHistory.find(r => r.nodeId === nodeId);
-                if (record && onNodeInspect) {
-                  onNodeInspect({
-                    nodeId: record.nodeId,
-                    nodeType: record.nodeType,
-                    input: record.input,
-                    output: record.output,
-                    duration: record.duration,
-                    startTime: record.startTime,
-                    endTime: record.endTime,
-                    error: record.error ? { message: record.error.message || 'Unknown error', stack: record.error.stack } : undefined,
-                  });
-                }
               }}
             />
           </div>
