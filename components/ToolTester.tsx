@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import styles from './ToolTester.module.css';
 import { SSEExecutionStream, generateExecutionId, type ExecutionEvent } from '../lib/executionStream';
 import type { NodeExecutionStatus } from './GraphVisualization';
 import ExecutionHistory, { type NodeExecutionRecord } from './ExecutionHistory';
 import DebugControls, { type ExecutionStatus } from './DebugControls';
+import GraphVisualization from './GraphVisualization';
 
 // Type definitions for SSE event data
 interface NodeCompleteEventData {
@@ -58,106 +59,35 @@ export type { ExecutionStatus };
 
 interface ToolTesterProps {
   toolName: string;
-  onExecutionStateChange?: (state: Map<string, NodeExecutionStatus>) => void;
-  onNodeHighlight?: (nodeId: string | null) => void;
-  onCurrentNodeChange?: (nodeId: string | null) => void;
-  breakpoints?: Set<string>;
-  onBreakpointsChange?: (breakpoints: Set<string>) => void;
-  onExecutionHistoryChange?: (history: NodeExecutionRecord[]) => void;
-  onResultChange?: (result: unknown, telemetry: ExecutionTelemetry | null) => void;
-  showExecutionHistory?: boolean; // Option to show/hide execution history in ToolTester
-  onExecutionStatusChange?: (status: ExecutionStatus) => void;
-  onExecutionIdChange?: (executionId: string | null) => void;
-  showDebugControls?: boolean; // Option to show/hide debug controls in ToolTester
-  onRunRequest?: (handler: () => void) => void; // Callback to expose run handler
-  onStepRequest?: (handler: () => void) => void; // Callback to expose step handler
-}
-
-
-interface ToolInfo {
-  name: string;
-  description: string;
-  inputSchema: {
-    type: string;
-    properties?: Record<string, any>;
-    required?: string[];
-  };
-  outputSchema?: {
-    type: string;
-    properties?: Record<string, any>;
-  };
+  graphData: { nodes: any[]; edges: any[] } | null;
+  inputFormRef: React.RefObject<{ submit: (startPaused: boolean) => void }>;
+  onFormSubmit: (handler: (formData: Record<string, any>, startPaused: boolean) => void) => void;
 }
 
 
 export default function ToolTester({ 
-  toolName, 
-  onExecutionStateChange, 
-  onNodeHighlight,
-  onCurrentNodeChange,
-  breakpoints: externalBreakpoints,
-  onBreakpointsChange,
-  onExecutionHistoryChange,
-  onResultChange,
-  showExecutionHistory = true, // Default to true for backward compatibility
-  onExecutionStatusChange,
-  onExecutionIdChange,
-  showDebugControls = true, // Default to true for backward compatibility
-  onRunRequest,
-  onStepRequest,
+  toolName,
+  graphData,
+  inputFormRef,
+  onFormSubmit,
 }: ToolTesterProps) {
-  const [toolInfo, setToolInfo] = useState<ToolInfo | null>(null);
-  const [formData, setFormData] = useState<Record<string, any>>({});
-  const [result, setResult] = useState<any>(null);
+  // Expose form submit handler to parent (so InputForm can call it)
+  // This needs to be after handleSubmit is defined, so we'll do it in a useEffect
+  const formSubmitHandlerRef = useRef<((formData: Record<string, any>, startPaused: boolean) => void) | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [executionHistory, setExecutionHistory] = useState<NodeExecutionRecord[]>([]);
   const [telemetry, setTelemetry] = useState<ExecutionTelemetry | null>(null);
   const [executionStatus, setExecutionStatus] = useState<ExecutionStatus>('not_started');
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
-
-  // Debug: Log execution status changes
-  useEffect(() => {
-    console.log(`[ToolTester] Execution status changed to: ${executionStatus}, currentNodeId: ${currentNodeId}`);
-  }, [executionStatus, currentNodeId]);
   const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
+  const [executionState, setExecutionState] = useState<Map<string, NodeExecutionStatus>>(new Map());
+  const [highlightedNode, setHighlightedNode] = useState<string | null>(null);
+  const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set());
+  // Use a ref to always get the latest breakpoints when handleSubmit executes
+  const breakpointsRef = useRef<Set<string>>(breakpoints);
+  const [executionResult, setExecutionResult] = useState<unknown>(null);
 
-  // Notify parent of execution status changes
-  useEffect(() => {
-    onExecutionStatusChange?.(executionStatus);
-  }, [executionStatus, onExecutionStatusChange]);
-
-  // Notify parent of execution ID changes
-  useEffect(() => {
-    onExecutionIdChange?.(currentExecutionId);
-  }, [currentExecutionId, onExecutionIdChange]);
-
-  // Store handleSubmit in a ref so handlers always call the latest version
-  const handleSubmitRef = useRef<((e?: React.FormEvent, startPaused?: boolean) => Promise<void>) | null>(null);
-  
-  // Expose run and step handlers to parent - only once
-  const handlersExposedRef = useRef(false);
-  
-  // Expose handlers immediately after component mounts
-  useEffect(() => {
-    if (!handlersExposedRef.current && (onRunRequest || onStepRequest)) {
-      if (onRunRequest) {
-        onRunRequest(() => {
-          if (handleSubmitRef.current) {
-            handleSubmitRef.current(undefined, false);
-          }
-        });
-      }
-      if (onStepRequest) {
-        onStepRequest(() => {
-          if (handleSubmitRef.current) {
-            handleSubmitRef.current(undefined, true);
-          }
-        });
-      }
-      handlersExposedRef.current = true;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount
   
   // Fetch execution history from controller
   const fetchExecutionHistory = async (execId: string) => {
@@ -169,7 +99,6 @@ export default function ToolTester({
         if (data.history && Array.isArray(data.history)) {
           // Update history and fetch input for any records missing it
           setExecutionHistory(data.history);
-          onExecutionHistoryChange?.(data.history);
           
           // Fetch input for any records that don't have it yet
           data.history.forEach((record: NodeExecutionRecord & { executionIndex?: number }) => {
@@ -209,7 +138,6 @@ export default function ToolTester({
               }
               return record;
             });
-            onExecutionHistoryChange?.(newHistory);
             return newHistory;
           });
         } else {
@@ -255,58 +183,16 @@ export default function ToolTester({
       console.error('Error fetching node input after complete:', err);
     }
   };
-  const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set());
   const executionStreamRef = useRef<SSEExecutionStream | null>(null);
   const executionStateRef = useRef<Map<string, NodeExecutionStatus>>(new Map());
 
-  useEffect(() => {
-    // Load tool info
-    fetch(`/api/tools/${toolName}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) {
-          setError(data.error);
-          return;
-        }
-        setToolInfo(data.tool);
-        // Initialize form data with default values
-        const defaults: Record<string, any> = {};
-        if (data.tool.inputSchema.properties) {
-          Object.entries(data.tool.inputSchema.properties).forEach(([key, prop]: [string, any]) => {
-            if (prop.type === 'string') {
-              defaults[key] = '';
-            } else if (prop.type === 'number') {
-              defaults[key] = 0;
-            } else if (prop.type === 'boolean') {
-              defaults[key] = false;
-            } else if (prop.type === 'array') {
-              defaults[key] = [];
-            } else if (prop.type === 'object') {
-              defaults[key] = {};
-            }
-          });
-        }
-        setFormData(defaults);
-      })
-      .catch(err => {
-        setError(err.message);
-      });
-  }, [toolName]);
-
-  const handleInputChange = (key: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      [key]: value,
-    }));
-  };
-
-  const handleSubmit = async (e?: React.FormEvent, startPaused: boolean = false) => {
-    if (e) {
-      e.preventDefault();
-    }
+  const handleSubmit = async (formData: Record<string, any>, startPaused: boolean = false) => {
+    // Read current breakpoints from ref (always up-to-date)
+    const currentBreakpoints = breakpointsRef.current;
+    
     setLoading(true);
     setError(null);
-    setResult(null);
+    setExecutionResult(null);
     setExecutionHistory([]);
     setTelemetry(null);
     setExecutionStatus('not_started');
@@ -314,8 +200,7 @@ export default function ToolTester({
     
     // Reset execution state
     executionStateRef.current.clear();
-    onExecutionStateChange?.(new Map());
-    onExecutionHistoryChange?.([]); // Clear history in parent
+    setExecutionState(new Map());
 
     // Generate execution ID and set up SSE stream
     const executionId = generateExecutionId();
@@ -354,7 +239,6 @@ export default function ToolTester({
           });
           if (nodeStartData.nodeId) {
             setCurrentNodeId(nodeStartData.nodeId);
-            onCurrentNodeChange?.(nodeStartData.nodeId);
           }
           
           // Update or create history record for this node with input from context
@@ -375,7 +259,6 @@ export default function ToolTester({
                 startTime: nodeStartData.timestamp,
                 input: nodeStartData.context, // Update with context from nodeStart (more accurate)
               };
-              onExecutionHistoryChange?.(updated);
               return updated;
             } else {
               // Create new running record
@@ -389,7 +272,6 @@ export default function ToolTester({
                 output: undefined, // Not completed yet
                 executionIndex,
               }];
-              onExecutionHistoryChange?.(newHistory);
               return newHistory;
             }
           });
@@ -430,7 +312,6 @@ export default function ToolTester({
                 output: eventData.output,
                 executionIndex,
               };
-              onExecutionHistoryChange?.(updated);
               return updated;
             } else {
               // Create new record
@@ -444,7 +325,6 @@ export default function ToolTester({
                 output: eventData.output,
                 executionIndex,
               }];
-              onExecutionHistoryChange?.(newHistory);
               return newHistory;
             }
           });
@@ -486,7 +366,6 @@ export default function ToolTester({
               } as Error,
               executionIndex,
             }];
-            onExecutionHistoryChange?.(newHistory);
             return newHistory;
           });
           
@@ -498,23 +377,18 @@ export default function ToolTester({
         }
         case 'executionComplete':
           console.log(`[ToolTester] Execution complete, result:`, event.data.result);
-          setResult(event.data.result);
+          setExecutionResult(event.data.result);
           // The execution history from the API should already have input populated
           // since we fetch it before unregistering the controller
           if (event.data.executionHistory) {
             const finalHistory = event.data.executionHistory as Array<NodeExecutionRecord & { executionIndex?: number }>;
             setExecutionHistory(finalHistory);
-            onExecutionHistoryChange?.(finalHistory);
           }
           if (event.data.telemetry) {
             setTelemetry(event.data.telemetry);
-            onResultChange?.(event.data.result, event.data.telemetry);
-          } else {
-            onResultChange?.(event.data.result, null);
           }
           setExecutionStatus('finished');
           setCurrentNodeId(null);
-          onCurrentNodeChange?.(null);
           setLoading(false);
           stream.disconnect();
           executionStreamRef.current = null;
@@ -524,7 +398,6 @@ export default function ToolTester({
           setError(event.data.error);
           setExecutionStatus('error');
           setCurrentNodeId(null);
-          onCurrentNodeChange?.(null);
           setLoading(false);
           stream.disconnect();
           executionStreamRef.current = null;
@@ -534,7 +407,6 @@ export default function ToolTester({
           console.log(`[ToolTester] Execution stopped by user`);
           setExecutionStatus('stopped');
           setCurrentNodeId(null);
-          onCurrentNodeChange?.(null);
           setLoading(false);
           stream.disconnect();
           executionStreamRef.current = null;
@@ -546,7 +418,6 @@ export default function ToolTester({
           setExecutionStatus('paused');
           if (pauseData.nodeId) {
             setCurrentNodeId(pauseData.nodeId);
-            onCurrentNodeChange?.(pauseData.nodeId);
           }
           
           // Create a pending history record for the node we're paused on
@@ -572,7 +443,6 @@ export default function ToolTester({
                 output: undefined, // Not completed yet
                 executionIndex,
               }];
-              onExecutionHistoryChange?.(newHistory);
               return newHistory;
             });
           }
@@ -595,17 +465,15 @@ export default function ToolTester({
           }
           if (event.data.currentNodeId !== undefined) {
             setCurrentNodeId(event.data.currentNodeId);
-            onCurrentNodeChange?.(event.data.currentNodeId);
           } else if (event.data.status === 'running' || event.data.status === 'finished' || event.data.status === 'error' || event.data.status === 'stopped') {
             // Clear currentNodeId when execution is no longer paused
             setCurrentNodeId(null);
-            onCurrentNodeChange?.(null);
           }
           break;
       }
       
-      // Notify parent component of state change
-      onExecutionStateChange?.(new Map(state));
+      // Update execution state
+      setExecutionState(new Map(state));
     });
 
     // Wait for SSE connection to be ready (event-driven)
@@ -629,6 +497,8 @@ export default function ToolTester({
       await waitForSSE;
       console.log(`[ToolTester] Starting execution for tool: ${toolName}, executionId: ${executionId}`);
 
+      const breakpointsArray = Array.from(currentBreakpoints);
+      
       const response = await fetch(`/api/tools/${toolName}`, {
         method: 'POST',
         headers: {
@@ -639,7 +509,7 @@ export default function ToolTester({
           executionId,
           options: {
             enableTelemetry: true,
-            breakpoints: Array.from(externalBreakpoints || []),
+            breakpoints: breakpointsArray,
             startPaused: startPaused, // mcpGraph 0.1.12+ supports starting paused
           },
         }),
@@ -663,57 +533,74 @@ export default function ToolTester({
     }
   };
   
-  // Update ref immediately when handleSubmit is defined
-  handleSubmitRef.current = handleSubmit;
-  
-  // Expose handlers immediately after handleSubmit is defined
-  useEffect(() => {
-    if (!handlersExposedRef.current && handleSubmitRef.current && (onRunRequest || onStepRequest)) {
-      if (onRunRequest) {
-        onRunRequest(() => {
-          if (handleSubmitRef.current) {
-            handleSubmitRef.current(undefined, false);
-          }
-        });
-      }
-      if (onStepRequest) {
-        onStepRequest(() => {
-          if (handleSubmitRef.current) {
-            handleSubmitRef.current(undefined, true);
-          }
-        });
-      }
-      handlersExposedRef.current = true;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Run once on mount
-
-  // Toggle breakpoint handler
-  const handleToggleBreakpoint = async (nodeId: string) => {
-    const newBreakpoints = new Set(breakpoints);
-    if (newBreakpoints.has(nodeId)) {
-      newBreakpoints.delete(nodeId);
+  // Expose handlers for DebugControls - trigger form submission
+  const handleRun = () => {
+    if (inputFormRef.current) {
+      inputFormRef.current.submit(false);
     } else {
-      newBreakpoints.add(nodeId);
-    }
-    setBreakpoints(newBreakpoints);
-    
-    // Update breakpoints on server if execution is active
-    if (currentExecutionId) {
-      try {
-        await fetch('/api/execution/breakpoints', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            executionId: currentExecutionId,
-            breakpoints: Array.from(newBreakpoints),
-          }),
-        });
-      } catch (err) {
-        console.error('Error updating breakpoints:', err);
-      }
+      console.warn('[ToolTester] inputFormRef.current is null, cannot submit form');
     }
   };
+  const handleStep = () => {
+    if (inputFormRef.current) {
+      inputFormRef.current.submit(true);
+    } else {
+      console.warn('[ToolTester] inputFormRef.current is null, cannot submit form');
+    }
+  };
+
+  const handleClear = () => {
+    // Reset all execution-related state
+    setLoading(false);
+    setError(null);
+    setExecutionResult(null);
+    setExecutionHistory([]);
+    setTelemetry(null);
+    setExecutionStatus('not_started');
+    setCurrentNodeId(null);
+    setCurrentExecutionId(null);
+    setExecutionState(new Map());
+    setHighlightedNode(null);
+    const emptyBreakpoints = new Set<string>();
+    setBreakpoints(emptyBreakpoints);
+    // Update ref immediately
+    breakpointsRef.current = emptyBreakpoints;
+    
+    // Clear execution state ref
+    executionStateRef.current.clear();
+    
+    // Disconnect any active stream
+    if (executionStreamRef.current) {
+      executionStreamRef.current.disconnect();
+      executionStreamRef.current = null;
+    }
+  };
+  
+  // Keep breakpointsRef in sync with breakpoints state
+  useEffect(() => {
+    breakpointsRef.current = breakpoints;
+  }, [breakpoints]);
+
+  // Expose form submit handler to parent (so InputForm can call it)
+  useEffect(() => {
+    // Update the ref with the current handleSubmit
+    // The handleSubmit function will read breakpoints from breakpointsRef when called
+    formSubmitHandlerRef.current = handleSubmit;
+    
+    // Expose the handler to parent
+    if (onFormSubmit) {
+      onFormSubmit((formData: Record<string, any>, startPaused: boolean) => {
+        if (formSubmitHandlerRef.current) {
+          formSubmitHandlerRef.current(formData, startPaused);
+        } else {
+          console.warn('[ToolTester] formSubmitHandlerRef.current is null');
+        }
+      });
+    } else {
+      console.warn('[ToolTester] onFormSubmit is not provided');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -724,202 +611,70 @@ export default function ToolTester({
     };
   }, []);
 
-  const formatDuration = (ms: number) => {
-    if (ms < 1) return '<1ms';
-    if (ms < 1000) return `${ms.toFixed(0)}ms`;
-    return `${(ms / 1000).toFixed(2)}s`;
-  };
-
-  const renderInputField = (key: string, prop: any) => {
-    const isRequired = toolInfo?.inputSchema.required?.includes(key);
-    const value = formData[key] ?? '';
-
-    switch (prop.type) {
-      case 'string':
-        return (
-          <div key={key} className={styles.field}>
-            <label className={styles.label}>
-              {key}
-              {isRequired && <span className={styles.required}>*</span>}
-            </label>
-            <input
-              type="text"
-              value={value}
-              onChange={e => handleInputChange(key, e.target.value)}
-              className={styles.input}
-              placeholder={prop.description || `Enter ${key}`}
-            />
-            {prop.description && (
-              <div className={styles.hint}>{prop.description}</div>
-            )}
-          </div>
-        );
-      case 'number':
-        return (
-          <div key={key} className={styles.field}>
-            <label className={styles.label}>
-              {key}
-              {isRequired && <span className={styles.required}>*</span>}
-            </label>
-            <input
-              type="number"
-              value={value}
-              onChange={e => handleInputChange(key, parseFloat(e.target.value) || 0)}
-              className={styles.input}
-              placeholder={prop.description || `Enter ${key}`}
-            />
-            {prop.description && (
-              <div className={styles.hint}>{prop.description}</div>
-            )}
-          </div>
-        );
-      case 'boolean':
-        return (
-          <div key={key} className={styles.field}>
-            <label className={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={value}
-                onChange={e => handleInputChange(key, e.target.checked)}
-                className={styles.checkbox}
-              />
-              {key}
-              {isRequired && <span className={styles.required}>*</span>}
-            </label>
-            {prop.description && (
-              <div className={styles.hint}>{prop.description}</div>
-            )}
-          </div>
-        );
-      case 'array':
-        return (
-          <div key={key} className={styles.field}>
-            <label className={styles.label}>
-              {key}
-              {isRequired && <span className={styles.required}>*</span>}
-            </label>
-            <textarea
-              value={Array.isArray(value) ? JSON.stringify(value, null, 2) : '[]'}
-              onChange={e => {
-                try {
-                  const parsed = JSON.parse(e.target.value);
-                  handleInputChange(key, parsed);
-                } catch {
-                  // Invalid JSON, ignore
-                }
-              }}
-              className={styles.textarea}
-              placeholder={prop.description || `Enter ${key} as JSON array`}
-              rows={3}
-            />
-            {prop.description && (
-              <div className={styles.hint}>{prop.description}</div>
-            )}
-          </div>
-        );
-      case 'object':
-        return (
-          <div key={key} className={styles.field}>
-            <label className={styles.label}>
-              {key}
-              {isRequired && <span className={styles.required}>*</span>}
-            </label>
-            <textarea
-              value={typeof value === 'object' ? JSON.stringify(value, null, 2) : '{}'}
-              onChange={e => {
-                try {
-                  const parsed = JSON.parse(e.target.value);
-                  handleInputChange(key, parsed);
-                } catch {
-                  // Invalid JSON, ignore
-                }
-              }}
-              className={styles.textarea}
-              placeholder={prop.description || `Enter ${key} as JSON object`}
-              rows={5}
-            />
-            {prop.description && (
-              <div className={styles.hint}>{prop.description}</div>
-            )}
-          </div>
-        );
-      default:
-        return (
-          <div key={key} className={styles.field}>
-            <label className={styles.label}>
-              {key}
-              {isRequired && <span className={styles.required}>*</span>}
-            </label>
-            <textarea
-              value={typeof value === 'string' ? value : JSON.stringify(value)}
-              onChange={e => {
-                try {
-                  const parsed = JSON.parse(e.target.value);
-                  handleInputChange(key, parsed);
-                } catch {
-                  handleInputChange(key, e.target.value);
-                }
-              }}
-              className={styles.textarea}
-              placeholder={prop.description || `Enter ${key}`}
-              rows={3}
-            />
-            {prop.description && (
-              <div className={styles.hint}>{prop.description}</div>
-            )}
-          </div>
-        );
+  const handleToggleBreakpoint = (nodeId: string) => {
+    const newBreakpoints = new Set(breakpoints);
+    if (newBreakpoints.has(nodeId)) {
+      newBreakpoints.delete(nodeId);
+    } else {
+      newBreakpoints.add(nodeId);
     }
+    setBreakpoints(newBreakpoints);
+    // Update ref immediately so handleSubmit always has the latest value
+    breakpointsRef.current = newBreakpoints;
   };
 
-  if (!toolInfo) {
-    return <div className={styles.loading}>Loading tool information...</div>;
+  const handleNodeClick = (nodeId: string) => {
+    setHighlightedNode(nodeId);
+    setTimeout(() => setHighlightedNode(null), 2000);
+  };
+
+  if (error) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.error}>
+          <strong>Error:</strong> {error}
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className={styles.container}>
-      <form onSubmit={handleSubmit} className={styles.form}>
-        <div className={styles.inputs}>
-          {toolInfo.inputSchema.properties &&
-            Object.entries(toolInfo.inputSchema.properties).map(([key, prop]) =>
-              renderInputField(key, prop)
-            )}
-        </div>
-
-      </form>
-
-      {showDebugControls && (
+      <div className={styles.debugControlsHeader}>
         <DebugControls
           executionId={currentExecutionId}
           status={executionStatus}
           currentNodeId={currentNodeId}
-          onStatusChange={setExecutionStatus}
-          onRun={() => handleSubmit(undefined, false)}
-          onStepFromStart={() => handleSubmit(undefined, true)}
-          disabled={loading}
+          onRun={handleRun}
+          onStepFromStart={handleStep}
+          onClear={handleClear}
         />
-      )}
-
-      {error && (
-        <div className={styles.error}>
-          <strong>Error:</strong> {error}
-        </div>
-      )}
-
-
-      {showExecutionHistory && executionHistory.length > 0 && (
-        <div className={styles.introspection}>
-          <div className={styles.historySection}>
-            <ExecutionHistory
-              history={executionHistory}
-              onNodeClick={(nodeId) => {
-                onNodeHighlight?.(nodeId);
-                setTimeout(() => onNodeHighlight?.(null), 2000); // Clear highlight after 2 seconds
-              }}
+      </div>
+      <div className={styles.graphHistoryContainer}>
+        <div className={styles.graphSection}>
+          {graphData && (
+            <GraphVisualization
+              nodes={graphData.nodes}
+              edges={graphData.edges}
+              selectedTool={toolName}
+              executionState={executionState}
+              highlightedNode={highlightedNode}
+              currentNodeId={currentNodeId}
+              breakpoints={breakpoints}
+              onToggleBreakpoint={handleToggleBreakpoint}
+              onNodeClick={handleNodeClick}
             />
-          </div>
+          )}
         </div>
-      )}
+        <div className={styles.historySection}>
+          <ExecutionHistory
+            history={executionHistory}
+            result={executionResult}
+            telemetry={telemetry || undefined}
+            onNodeClick={handleNodeClick}
+          />
+        </div>
+      </div>
     </div>
   );
 }

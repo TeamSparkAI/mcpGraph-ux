@@ -1,12 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import GraphVisualization, { type NodeExecutionStatus } from '@/components/GraphVisualization';
+import { useEffect, useState, useRef } from 'react';
 import ToolList from '@/components/ToolList';
 import ToolTester from '@/components/ToolTester';
+import InputForm, { type InputFormHandle } from '@/components/InputForm';
 import { ServerConfig, McpServers } from '@/components/ServerDetails';
-import ExecutionHistory, { type NodeExecutionRecord } from '@/components/ExecutionHistory';
-import DebugControls, { type ExecutionStatus } from '@/components/DebugControls';
 import styles from './page.module.css';
 
 interface Tool {
@@ -22,24 +20,9 @@ export default function Home() {
   const [graphData, setGraphData] = useState<{ nodes: any[]; edges: any[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [executionState, setExecutionState] = useState<Map<string, NodeExecutionStatus>>(new Map());
-  const [highlightedNode, setHighlightedNode] = useState<string | null>(null);
-  const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
-  const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set());
-  const [executionHistory, setExecutionHistory] = useState<NodeExecutionRecord[]>([]);
-  const [executionResult, setExecutionResult] = useState<unknown>(null);
-  const [executionTelemetry, setExecutionTelemetry] = useState<{
-    totalDuration: number;
-    nodeCounts: Record<string, number>;
-    errorCount: number;
-  } | null>(null);
-
-  const [executionStatus, setExecutionStatus] = useState<ExecutionStatus>('not_started');
-  const [currentExecutionId, setCurrentExecutionId] = useState<string | null>(null);
-  const [runHandler, setRunHandler] = useState<(() => void) | null>(null);
-  const [stepHandler, setStepHandler] = useState<(() => void) | null>(null);
-
   const [serverDetails, setServerDetails] = useState<any>(null);
+  const inputFormRef = useRef<InputFormHandle>(null);
+  const toolTesterFormSubmitRef = useRef<((formData: Record<string, any>, startPaused: boolean) => void) | null>(null);
 
   useEffect(() => {
     // Load tools and graph data (graph includes config)
@@ -111,87 +94,37 @@ export default function Home() {
         </div>
 
         <div className={styles.content}>
-          {/* Top section: Tool testing and debug controls */}
+          {/* Top section: Input form */}
           {selectedTool && (
             <div className={styles.testerSection}>
               <h2>Test Tool: {selectedTool}</h2>
-              <ToolTester 
+              <InputForm
+                ref={inputFormRef}
                 toolName={selectedTool}
-                onExecutionStateChange={setExecutionState}
-                onNodeHighlight={setHighlightedNode}
-                onCurrentNodeChange={setCurrentNodeId}
-                breakpoints={breakpoints}
-                onBreakpointsChange={setBreakpoints}
-                onExecutionHistoryChange={setExecutionHistory}
-                onResultChange={(result, telemetry) => {
-                  setExecutionResult(result);
-                  setExecutionTelemetry(telemetry);
+                onSubmit={(data, startPaused) => {
+                  // Form validated and collected data - pass to ToolTester for execution
+                  if (toolTesterFormSubmitRef.current) {
+                    toolTesterFormSubmitRef.current(data, startPaused);
+                  } else {
+                    console.warn('[page.tsx] toolTesterFormSubmitRef.current is null');
+                  }
                 }}
-                onExecutionStatusChange={setExecutionStatus}
-                onExecutionIdChange={setCurrentExecutionId}
-                onRunRequest={(handler) => setRunHandler(() => handler)}
-                onStepRequest={(handler) => setStepHandler(() => handler)}
-                showExecutionHistory={false}
-                showDebugControls={false}
               />
             </div>
           )}
 
-          {/* Bottom section: Split into graph (left) and execution history (right) */}
-          <div className={styles.bottomSection}>
-            {selectedTool && (
-              <div className={styles.debugControlsHeader}>
-                <DebugControls
-                  executionId={currentExecutionId}
-                  status={executionStatus}
-                  currentNodeId={currentNodeId}
-                  onRun={runHandler || undefined}
-                  onStepFromStart={stepHandler || undefined}
-                />
-              </div>
-            )}
-            <div className={styles.graphHistoryContainer}>
-              <div className={styles.graphSection}>
-                {graphData && (
-                  <GraphVisualization
-                    nodes={graphData.nodes}
-                    edges={graphData.edges}
-                    selectedTool={selectedTool}
-                    executionState={executionState}
-                    highlightedNode={highlightedNode}
-                    currentNodeId={currentNodeId}
-                    breakpoints={breakpoints}
-                    onToggleBreakpoint={(nodeId) => {
-                      const newBreakpoints = new Set(breakpoints);
-                      if (newBreakpoints.has(nodeId)) {
-                        newBreakpoints.delete(nodeId);
-                      } else {
-                        newBreakpoints.add(nodeId);
-                      }
-                      setBreakpoints(newBreakpoints);
-                    }}
-                    onNodeClick={(nodeId) => {
-                      // Just highlight the node when clicked
-                      setHighlightedNode(nodeId);
-                      setTimeout(() => setHighlightedNode(null), 2000);
-                    }}
-                  />
-                )}
-              </div>
-
-              <div className={styles.historySection}>
-                <ExecutionHistory
-                  history={executionHistory}
-                  result={executionResult}
-                  telemetry={executionTelemetry || undefined}
-                  onNodeClick={(nodeId) => {
-                    setHighlightedNode(nodeId);
-                    setTimeout(() => setHighlightedNode(null), 2000);
-                  }}
-                />
-              </div>
-            </div>
-          </div>
+          {/* Bottom section: Execution/testing area (includes debug controls, graph, and history) */}
+          {selectedTool && graphData && (
+            <ToolTester
+              toolName={selectedTool}
+              graphData={graphData}
+              inputFormRef={inputFormRef}
+              onFormSubmit={(handler) => {
+                // Store the handler that InputForm will call
+                toolTesterFormSubmitRef.current = handler;
+              }}
+            />
+          )}
         </div>
       </div>
     </div>

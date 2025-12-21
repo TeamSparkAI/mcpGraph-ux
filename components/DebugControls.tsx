@@ -12,6 +12,7 @@ interface DebugControlsProps {
   onStatusChange?: (status: ExecutionStatus) => void;
   onRun?: () => void;
   onStepFromStart?: () => void;
+  onClear?: () => void;
   disabled?: boolean;
 }
 
@@ -22,6 +23,7 @@ export default function DebugControls({
   onStatusChange,
   onRun,
   onStepFromStart,
+  onClear,
   disabled,
 }: DebugControlsProps) {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -124,6 +126,12 @@ export default function DebugControls({
     }
   };
 
+  const handleClear = () => {
+    if (onClear) {
+      onClear();
+    }
+  };
+
   return (
     <div className={styles.container}>
       <div className={styles.controlsRow}>
@@ -167,6 +175,14 @@ export default function DebugControls({
           title="Stop/cancel execution"
         >
           ⏹ Stop
+        </button>
+        <button
+          onClick={handleClear}
+          disabled={isProcessing || (status !== 'finished' && status !== 'error' && status !== 'stopped')}
+          className={styles.button}
+          title="Clear execution history and reset state"
+        >
+          × Clear
         </button>
         </div>
         
