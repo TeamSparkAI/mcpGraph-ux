@@ -6,6 +6,8 @@ A Next.js application that provides a visual interface for the [mcpGraph](https:
 - **List tools**: See all available MCP tools defined in your graph configuration
 - **Test tools**: Execute tools with custom parameters and view results from the exit node
 
+![mcpGraph UX Screenshot](screenshot.png)
+
 ## Features
 
 - 🎨 **Graph Visualization**: Interactive graph visualization using React Flow, showing all nodes and their connections
