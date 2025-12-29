@@ -37,6 +37,13 @@ interface NodeData {
   args?: Record<string, unknown>;
   transform?: { expr: string };
   conditions?: Array<{ rule?: unknown; target: string }>;
+  executionState?: NodeExecutionState;
+  isHighlighted?: boolean;
+  isCurrentNode?: boolean;
+  hasBreakpoint?: boolean;
+  onToggleBreakpoint?: (nodeId: string) => void;
+  onNodeClick?: (nodeId: string) => void;
+  nodeId: string;
   [key: string]: unknown;
 }
 
@@ -232,15 +239,15 @@ function NodeTypeIcon({ nodeType }: { nodeType: string }) {
 }
 
 // Custom node component with top/bottom handles for vertical flow
-function CustomNode({ data }: { data: any }) {
+function CustomNode({ data }: { data: NodeData }) {
   const nodeType = data.nodeType || 'unknown';
-  const executionState = data.executionState as NodeExecutionState | undefined;
-  const isHighlighted = data.isHighlighted as boolean | undefined;
-  const isCurrentNode = data.isCurrentNode as boolean | undefined;
-  const hasBreakpoint = data.hasBreakpoint as boolean | undefined;
-  const onToggleBreakpoint = data.onToggleBreakpoint as ((nodeId: string) => void) | undefined;
-  const onNodeClick = data.onNodeClick as ((nodeId: string) => void) | undefined;
-  const nodeId = data.nodeId as string;
+  const executionState = data.executionState;
+  const isHighlighted = data.isHighlighted;
+  const isCurrentNode = data.isCurrentNode;
+  const hasBreakpoint = data.hasBreakpoint;
+  const onToggleBreakpoint = data.onToggleBreakpoint;
+  const onNodeClick = data.onNodeClick;
+  const nodeId = data.nodeId;
   
   const baseStyle = getNodeStyle(nodeType, executionState);
   
@@ -284,7 +291,7 @@ function CustomNode({ data }: { data: any }) {
 
   const handleNodeClick = (e: React.MouseEvent) => {
     // Don't trigger node click if clicking on breakpoint
-    if ((e.target as HTMLElement).closest('button')) {
+    if (e.target instanceof HTMLElement && e.target.closest('button')) {
       return;
     }
     if (onNodeClick && nodeId) {
@@ -309,7 +316,7 @@ function CustomNode({ data }: { data: any }) {
         <span>{data.label}</span>
         
         {/* Duration */}
-        {data.duration !== undefined && (
+        {typeof data.duration === 'number' && (
           <span style={{ fontSize: '10px', opacity: 0.7 }}>
             ({data.duration}ms)
           </span>
@@ -526,63 +533,10 @@ export default function GraphVisualization({
     );
   }, [nodes, edges, executionState, highlightedNode, breakpoints, onToggleBreakpoint, onNodeClick, currentNodeId, setNodes, setEdges]);
 
-  // Filter nodes/edges for selected tool if provided
-  const filteredNodes = useMemo(() => {
-    if (!selectedTool) return flowNodes;
-    return flowNodes.filter(node => {
-      const data = node.data as NodeData;
-      return (
-        (data.nodeType === 'entry' && data.tool === selectedTool) ||
-        (data.nodeType === 'exit' && data.tool === selectedTool) ||
-        flowEdges.some(edge => {
-          // Include nodes that are reachable from entry or lead to exit
-          const entryNode = flowNodes.find(
-            n => {
-              const nData = n.data as NodeData;
-              return nData?.nodeType === 'entry' && nData?.tool === selectedTool;
-            }
-          );
-          const exitNode = flowNodes.find(
-            n => {
-              const nData = n.data as NodeData;
-              return nData?.nodeType === 'exit' && nData?.tool === selectedTool;
-            }
-          );
-          
-          if (!entryNode || !exitNode) return false;
-          
-          // Simple reachability check
-          const visited = new Set<string>();
-          const queue = [entryNode.id];
-          visited.add(entryNode.id);
-          
-          while (queue.length > 0) {
-            const current = queue.shift()!;
-            if (current === node.id) return true;
-            
-            flowEdges
-              .filter(e => e.source === current)
-              .forEach(e => {
-                if (!visited.has(e.target)) {
-                  visited.add(e.target);
-                  queue.push(e.target);
-                }
-              });
-          }
-          
-          return false;
-        })
-      );
-    });
-  }, [flowNodes, flowEdges, selectedTool]);
-
-  const filteredEdges = useMemo(() => {
-    if (!selectedTool) return flowEdges;
-    const filteredNodeIds = new Set(filteredNodes.map(n => n.id));
-    return flowEdges.filter(
-      edge => filteredNodeIds.has(edge.source) && filteredNodeIds.has(edge.target)
-    );
-  }, [flowEdges, filteredNodes, selectedTool]);
+  // No need to filter - the API already returns nodes for the selected tool
+  // The selectedTool prop is kept for potential future use but filtering is done server-side
+  const filteredNodes = flowNodes;
+  const filteredEdges = flowEdges;
 
   return (
     <div className={styles.container}>

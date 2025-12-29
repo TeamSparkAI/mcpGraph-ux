@@ -5,7 +5,7 @@
 
 export interface ExecutionEvent {
   type: string;
-  data: any;
+  data: unknown;
   timestamp: number;
 }
 
@@ -76,7 +76,7 @@ export class SSEExecutionStream implements ExecutionStream {
             ];
 
     eventTypes.forEach((eventType) => {
-      this.eventSource?.addEventListener(eventType, (event: any) => {
+      this.eventSource?.addEventListener(eventType, (event: MessageEvent) => {
         try {
           console.log(`[SSE Client] Received event: ${eventType}`, event.data);
           const data = JSON.parse(event.data);

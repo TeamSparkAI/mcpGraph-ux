@@ -3,17 +3,23 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import styles from './InputForm.module.css';
 
+interface JsonSchemaProperty {
+  type: string;
+  description?: string;
+  format?: string;
+}
+
 interface ToolInfo {
   name: string;
   description: string;
   inputSchema: {
     type: string;
-    properties?: Record<string, any>;
+    properties?: Record<string, JsonSchemaProperty>;
     required?: string[];
   };
   outputSchema?: {
     type: string;
-    properties?: Record<string, any>;
+    properties?: Record<string, JsonSchemaProperty>;
   };
 }
 
@@ -80,7 +86,7 @@ const InputForm = forwardRef<InputFormHandle, InputFormProps>(({ toolName, onSub
     },
   }));
 
-  const handleInputChange = (key: string, value: any) => {
+  const handleInputChange = (key: string, value: unknown) => {
     setFormData(prev => ({
       ...prev,
       [key]: value,
@@ -106,7 +112,7 @@ const InputForm = forwardRef<InputFormHandle, InputFormProps>(({ toolName, onSub
     onSubmit(formData, startPaused);
   };
 
-  const renderInputField = (key: string, prop: any) => {
+  const renderInputField = (key: string, prop: JsonSchemaProperty) => {
     const value = formData[key];
     const isRequired = toolInfo?.inputSchema.required?.includes(key);
 
@@ -245,16 +251,21 @@ const InputForm = forwardRef<InputFormHandle, InputFormProps>(({ toolName, onSub
     return <div className={styles.loading}>Loading tool information...</div>;
   }
 
-  if (error) {
-    return (
-      <div className={styles.error}>
-        <strong>Error:</strong> {error}
-      </div>
-    );
-  }
-
   return (
     <form ref={formRef} onSubmit={handleSubmit} className={styles.form}>
+      {error && (
+        <div className={styles.error}>
+          <strong>Error:</strong> {error}
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className={styles.dismissButton}
+            aria-label="Dismiss error"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div className={styles.inputs}>
         {toolInfo.inputSchema.properties &&
           Object.entries(toolInfo.inputSchema.properties).map(([key, prop]) =>

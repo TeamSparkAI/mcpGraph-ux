@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server';
-import { type ExecutionOptions, type ExecutionHooks, type ExecutionResult } from 'mcpgraph';
+import { 
+  type ExecutionOptions, 
+  type ExecutionHooks, 
+  type ExecutionResult, 
+  type NodeDefinition,
+  ToolCallMcpError,
+  ToolCallError
+} from 'mcpgraph';
 import { getApi } from '@/lib/mcpGraphApi';
 import { sendExecutionEvent, closeExecutionStream } from '@/lib/executionStreamServer';
 import { registerController, unregisterController, getController } from '@/lib/executionController';
@@ -37,10 +44,14 @@ export async function POST(
   let executionId: string | undefined;
   try {
     const api = getApi();
-    const body = await request.json();
+    const body = await request.json() as {
+      args?: Record<string, unknown>;
+      executionId?: string;
+      options?: ExecutionOptions;
+    };
     const args = body.args || {};
-    executionId = body.executionId as string | undefined;
-    const executionOptions = body.options as ExecutionOptions | undefined;
+    executionId = body.executionId;
+    const executionOptions = body.options;
     
     // Log breakpoints received
     const breakpointsReceived = executionOptions?.breakpoints || [];
@@ -93,26 +104,84 @@ export async function POST(
           });
         },
         onNodeError: async (executionIndex, nodeId, node, error, context) => {
+          // Log the entire error object for debugging
+          console.log(`[API] onNodeError - Full error object dump:`);
+          console.log(`[API] Error type: ${error.constructor.name}`);
+          console.log(`[API] Error instanceof ToolCallMcpError: ${error instanceof ToolCallMcpError}`);
+          console.log(`[API] Error instanceof ToolCallError: ${error instanceof ToolCallError}`);
+          console.log(`[API] Error instanceof Error: ${error instanceof Error}`);
+          console.log(`[API] Error object keys:`, Object.keys(error));
+          console.log(`[API] Full error object:`, JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+          console.log(`[API] Error properties:`, {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+            code: (error as any).code,
+            data: (error as any).data,
+            stderr: (error as any).stderr,
+            result: (error as any).result,
+          });
+          
+          // Type-safe extraction of error properties based on error type
+          const errorData: {
+            message: string;
+            stack?: string;
+            code?: number;
+            data?: unknown;
+            stderr?: string[]; // For ToolCallMcpError
+            result?: unknown; // For ToolCallError
+            errorType: 'mcp' | 'tool' | 'unknown';
+          } = {
+            message: error.message,
+            stack: error.stack,
+            errorType: 'unknown',
+          };
+
+          // Check for ToolCallMcpError (MCP protocol-level error with stderr)
+          if (error instanceof ToolCallMcpError) {
+            console.log(`[API] Detected ToolCallMcpError - stderr:`, error.stderr);
+            errorData.errorType = 'mcp';
+            errorData.code = error.code;
+            errorData.data = error.data;
+            errorData.stderr = error.stderr;
+          }
+          // Check for ToolCallError (tool returned error response)
+          else if (error instanceof ToolCallError) {
+            console.log(`[API] Detected ToolCallError - result:`, error.result);
+            errorData.errorType = 'tool';
+            errorData.result = error.result;
+          }
+          // Fallback: check if it's a generic McpError (has code property)
+          else if (error instanceof Error && 'code' in error && typeof (error as { code: unknown }).code === 'number') {
+            console.log(`[API] Detected generic McpError-like error`);
+            errorData.errorType = 'mcp';
+            errorData.code = (error as { code: number }).code;
+            if ('data' in error) {
+              errorData.data = (error as { data: unknown }).data;
+            }
+          }
+          
+          console.log(`[API] Final errorData being sent:`, JSON.stringify(errorData, null, 2));
+
           sendExecutionEvent(execId, 'nodeError', {
             nodeId,
             nodeType: node.type,
             executionIndex,
             input: context, // Include context as input (mcpGraph 0.1.19+ provides actual context)
-            error: {
-              message: error.message,
-              stack: error.stack,
-            },
+            error: errorData,
             timestamp: Date.now(),
           });
         },
         onPause: async (executionIndex, nodeId, context) => {
           console.log(`[API] onPause hook called for node: ${nodeId}, executionIndex: ${executionIndex}`);
           
-          // Look up node type from config
-          const api = getApi();
-          const config = api.getConfig();
-          const node = config.nodes.find(n => n.id === nodeId);
-          const nodeType = node?.type || 'unknown';
+          // Look up node type from the tool
+          const tool = api.getTool(params.toolName);
+          let nodeType = 'unknown';
+          if (tool && 'nodes' in tool && Array.isArray(tool.nodes)) {
+            const node = tool.nodes.find((n: NodeDefinition) => n.id === nodeId);
+            nodeType = node?.type || 'unknown';
+          }
           
           sendExecutionEvent(execId, 'pause', {
             nodeId,

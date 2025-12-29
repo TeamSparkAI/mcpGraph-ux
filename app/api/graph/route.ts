@@ -5,13 +5,47 @@ import { getApi } from '@/lib/mcpGraphApi';
 // Force dynamic rendering - this route requires runtime config
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const api = getApi();
     const config = api.getConfig();
     
+    // Get toolName from query parameter
+    const url = new URL(request.url);
+    const toolName = url.searchParams.get('toolName');
+    
+    if (!toolName) {
+      return NextResponse.json(
+        { error: 'toolName query parameter is required' },
+        { status: 400 }
+      );
+    }
+    
+    // Get tool definition from config.tools (which is ToolDefinition[], not ToolInfo)
+    // getTool() returns ToolInfo which doesn't have nodes - we need ToolDefinition from config
+    const tool = config.tools.find(t => t.name === toolName);
+    
+    if (!tool) {
+      const toolNames = config.tools.map(t => t.name);
+      return NextResponse.json(
+        { error: `Tool '${toolName}' not found. Available tools: ${toolNames.join(', ')}` },
+        { status: 404 }
+      );
+    }
+    
+    if (!tool.nodes || tool.nodes.length === 0) {
+      return NextResponse.json(
+        { error: `Tool '${toolName}' has no nodes defined` },
+        { status: 404 }
+      );
+    }
+    
+    const allNodes: NodeDefinition[] = tool.nodes;
+    console.log(`[graph/route] Found ${allNodes.length} nodes for tool '${toolName}'`);
+    console.log(`[graph/route] Node IDs:`, allNodes.map(n => n.id));
+    
     // Transform nodes into React Flow format
-    const nodes = config.nodes.map((node: NodeDefinition) => {
+    const nodes = allNodes.map((node: NodeDefinition) => {
       const baseNode = {
         id: node.id,
         type: node.type,
@@ -74,7 +108,7 @@ export async function GET() {
     // Create edges from node.next and switch conditions
     const edges: Array<{ id: string; source: string; target: string; label?: string }> = [];
     
-    config.nodes.forEach((node: NodeDefinition) => {
+    allNodes.forEach((node: NodeDefinition) => {
       if ('next' in node && node.next) {
         edges.push({
           id: `${node.id}-${node.next}`,
@@ -95,6 +129,8 @@ export async function GET() {
       }
     });
 
+    console.log(`[graph/route] Returning ${nodes.length} nodes and ${edges.length} edges`);
+    
     return NextResponse.json({ 
       nodes, 
       edges, 
@@ -102,8 +138,7 @@ export async function GET() {
       config: {
         name: config.server.name,
         version: config.server.version,
-        description: config.server.description,
-        servers: Object.entries(config.servers || {}).map(([name, server]) => {
+        servers: Object.entries(config.mcpServers || {}).map(([name, server]) => {
           const details: {
             name: string;
             type: string;

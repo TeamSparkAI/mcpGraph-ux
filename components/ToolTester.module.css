@@ -45,3 +45,42 @@
   color: #c62828;
 }
 
+.errorBanner {
+  padding: 0.75rem 1rem;
+  background-color: #ffebee;
+  border: 1px solid #ef5350;
+  border-radius: 4px;
+  color: #c62828;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dismissButton {
+  background: none;
+  border: none;
+  color: #c62828;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.dismissButton:hover {
+  background-color: rgba(198, 40, 40, 0.1);
+}
+
+.dismissButton:focus {
+  outline: 2px solid #c62828;
+  outline-offset: 2px;
+}
+

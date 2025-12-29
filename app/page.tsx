@@ -17,7 +17,7 @@ interface Tool {
 export default function Home() {
   const [tools, setTools] = useState<Tool[]>([]);
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
-  const [graphData, setGraphData] = useState<{ nodes: any[]; edges: any[] } | null>(null);
+  const [graphData, setGraphData] = useState<{ nodes: Array<{ id: string; type: string; data: Record<string, unknown>; position: { x: number; y: number } }>; edges: Array<{ id: string; source: string; target: string; label?: string }> } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [serverDetails, setServerDetails] = useState<any>(null);
@@ -25,25 +25,15 @@ export default function Home() {
   const toolTesterFormSubmitRef = useRef<((formData: Record<string, any>, startPaused: boolean) => void) | null>(null);
 
   useEffect(() => {
-    // Load tools and graph data (graph includes config)
-    Promise.all([
-      fetch('/api/tools').then(res => res.json()),
-      fetch('/api/graph').then(res => res.json()),
-    ])
-      .then(([toolsRes, graphRes]) => {
+    // Load tools and server config
+    fetch('/api/tools')
+      .then(res => res.json())
+      .then(toolsRes => {
         if (toolsRes.error) {
           setError(toolsRes.error);
           return;
         }
-        if (graphRes.error) {
-          setError(graphRes.error);
-          return;
-        }
         setTools(toolsRes.tools);
-        setGraphData({ nodes: graphRes.nodes, edges: graphRes.edges });
-        if (graphRes.config) {
-          setServerDetails(graphRes.config);
-        }
         if (toolsRes.tools.length > 0) {
           setSelectedTool(toolsRes.tools[0].name);
         }
@@ -55,6 +45,27 @@ export default function Home() {
         setLoading(false);
       });
   }, []);
+
+  // Load graph data and server config when tool is selected
+  useEffect(() => {
+    if (!selectedTool) return;
+    
+    fetch(`/api/graph?toolName=${encodeURIComponent(selectedTool)}`)
+      .then(res => res.json())
+      .then(graphRes => {
+        if (graphRes.error) {
+          setError(graphRes.error);
+          return;
+        }
+        setGraphData({ nodes: graphRes.nodes, edges: graphRes.edges });
+        if (graphRes.config) {
+          setServerDetails(graphRes.config);
+        }
+      })
+      .catch(err => {
+        setError(err.message);
+      });
+  }, [selectedTool]);
 
   if (loading) {
     return (

@@ -6,7 +6,7 @@
 
 import { getStreamsMap } from './mcpGraphApi';
 
-function sendEvent(controller: ReadableStreamDefaultController, event: string, data: any) {
+function sendEvent(controller: ReadableStreamDefaultController, event: string, data: unknown) {
   const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   controller.enqueue(new TextEncoder().encode(message));
 }
@@ -33,7 +33,7 @@ export function unregisterExecutionStream(executionId: string) {
 /**
  * Send an event to a specific execution stream
  */
-export function sendExecutionEvent(executionId: string, event: string, data: any) {
+export function sendExecutionEvent(executionId: string, event: string, data: unknown) {
   const streams = getStreamsMap();
   const stream = streams.get(executionId);
   if (stream) {

@@ -106,3 +106,9 @@ This application follows the design recommendations from the mcpGraph project:
 ## License
 
 MIT
+
+## TODO
+
+Validate running graph (deal with cwd issue so we can run file_utils)
+
+Would be nice to be able to inspect nodes in graph

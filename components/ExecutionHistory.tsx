@@ -110,32 +110,88 @@ export default function ExecutionHistory({ history, onNodeClick, result, telemet
               
               {isExpanded && (
                 <div className={styles.details}>
-                  {hasError && (
-                    <div className={styles.errorSection}>
-                      <strong>Error:</strong>
-                      <pre className={styles.errorMessage}>
-                        {record.error?.message || 'Unknown error'}
-                        {record.error?.stack && (
-                          <div className={styles.stackTrace}>
-                            {record.error.stack}
-                          </div>
-                        )}
-                      </pre>
-                    </div>
-                  )}
-                  
                   <div className={styles.dataSection}>
                     <div className={styles.dataItem}>
                       <strong>Input:</strong>
                       <pre className={styles.jsonData}>{formatJSON(record.input)}</pre>
                     </div>
-                    {!hasError && record.output !== undefined && (
+                    {hasError ? (
+                      <div className={styles.dataItem}>
+                        <strong>Error:</strong>
+                        <pre className={styles.errorOutput}>
+                          {(() => {
+                            const err = record.error;
+                            if (!err) return 'Unknown error';
+                            
+                            // Extract error properties
+                            const errorCode = 'code' in err && typeof err.code === 'number' ? err.code : null;
+                            const errorData = 'data' in err ? err.data : null;
+                            const errorType = 'errorType' in err && typeof err.errorType === 'string' ? err.errorType : 'unknown';
+                            const stderr = 'stderr' in err && Array.isArray(err.stderr) ? err.stderr : null;
+                            const result = 'result' in err ? err.result : null;
+                            
+                            // Clean the message - remove stderr part if stderr is available as separate property
+                            let errorText = err.message || 'Unknown error';
+                            if (stderr && stderr.length > 0) {
+                              // Remove the stderr part that was concatenated into the message
+                              errorText = errorText.split('\n\nServer stderr output:')[0].trim();
+                            }
+                            
+                            // Prepend error code if available
+                            if (errorCode !== null) {
+                              errorText = `[Error ${errorCode}] ${errorText}`;
+                            }
+                            
+                            return (
+                              <>
+                                <div className={styles.errorTypeBadge}>
+                                  {errorType === 'mcp' && '🔴 MCP Protocol Error'}
+                                  {errorType === 'tool' && '🟡 Tool Error'}
+                                  {errorType === 'unknown' && '❌ Error'}
+                                </div>
+                                {errorText}
+                                
+                                {/* Show stderr for MCP errors */}
+                                {stderr && stderr.length > 0 && (
+                                  <div className={styles.errorSection}>
+                                    <strong>Server stderr output:</strong>
+                                    <pre className={styles.stderrOutput}>{stderr.join('\n')}</pre>
+                                  </div>
+                                )}
+                                
+                                {/* Show error data for MCP errors */}
+                                {errorData !== null && errorData !== undefined && (
+                                  <div className={styles.errorSection}>
+                                    <strong>Error Details:</strong>
+                                    <pre className={styles.errorDataPre}>{formatJSON(errorData)}</pre>
+                                  </div>
+                                )}
+                                
+                                {/* Show result for tool errors */}
+                                {result !== null && result !== undefined && (
+                                  <div className={styles.errorSection}>
+                                    <strong>Tool Call Result:</strong>
+                                    <pre className={styles.errorDataPre}>{formatJSON(result)}</pre>
+                                  </div>
+                                )}
+                                
+                                {err.stack && (
+                                  <div className={styles.errorSection}>
+                                    <strong>Stack Trace:</strong>
+                                    <pre className={styles.errorDataPre}>{err.stack}</pre>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </pre>
+                      </div>
+                    ) : record.output !== undefined ? (
                       <div className={styles.dataItem}>
                         <strong>Output:</strong>
                         <pre className={styles.jsonData}>{formatJSON(record.output)}</pre>
                       </div>
-                    )}
-                    {!hasError && record.output === undefined && (
+                    ) : (
                       <div className={styles.dataItem}>
                         <strong>Output:</strong>
                         <div style={{ fontStyle: 'italic', color: '#666' }}>Pending execution</div>
@@ -164,11 +220,20 @@ export default function ExecutionHistory({ history, onNodeClick, result, telemet
       
       {/* Result display at the bottom - always expanded and styled to stand out */}
       {result !== null && result !== undefined && (
-        <div className={styles.resultItem}>
+        <div className={`${styles.resultItem} ${result && typeof result === 'object' && 'error' in result ? styles.errorResultItem : ''}`}>
           <div className={styles.resultHeader}>
             <div className={styles.resultTitle}>
-              <span className={styles.resultIcon}>✓</span>
-              <strong>Final Result</strong>
+              {result && typeof result === 'object' && 'error' in result ? (
+                <>
+                  <span className={styles.errorIcon}>✗</span>
+                  <strong style={{ color: '#c62828' }}>Execution Error</strong>
+                </>
+              ) : (
+                <>
+                  <span className={styles.resultIcon}>✓</span>
+                  <strong>Final Result</strong>
+                </>
+              )}
             </div>
             {telemetry && (
               <div className={styles.resultStats}>
@@ -187,7 +252,17 @@ export default function ExecutionHistory({ history, onNodeClick, result, telemet
             )}
           </div>
           <div className={styles.resultContent}>
-            <pre className={styles.resultPre}>{formatJSON(result)}</pre>
+            {result && typeof result === 'object' && 'error' in result ? (
+              <div className={styles.errorResult}>
+                <pre className={styles.errorPre}>
+                  {typeof result.error === 'string' 
+                    ? result.error 
+                    : 'Execution failed - see node errors above for details'}
+                </pre>
+              </div>
+            ) : (
+              <pre className={styles.resultPre}>{formatJSON(result)}</pre>
+            )}
           </div>
         </div>
       )}

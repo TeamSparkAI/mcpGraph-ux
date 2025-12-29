@@ -138,11 +138,62 @@
   word-break: break-word;
 }
 
-.stackTrace {
-  margin-top: 8px;
+
+.errorTypeBadge {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  background: rgba(198, 40, 40, 0.1);
+  border: 1px solid rgba(198, 40, 40, 0.3);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #c62828;
+}
+
+.errorSection {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(198, 40, 40, 0.3);
+}
+
+.errorSection strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #c62828;
   font-size: 11px;
-  color: #999;
+}
+
+.errorDataPre {
+  margin: 0;
+  padding: 8px;
+  background: rgba(198, 40, 40, 0.1);
+  border: 1px solid rgba(198, 40, 40, 0.3);
+  border-radius: 4px;
+  font-size: 10px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #c62828;
+}
+
+.stderrOutput {
+  margin: 0;
+  padding: 8px;
+  background: rgba(255, 152, 0, 0.1);
+  border: 1px solid rgba(255, 152, 0, 0.3);
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #e65100;
 }
 
 .dataSection {
@@ -180,6 +231,22 @@
   word-break: break-word;
 }
 
+.errorOutput {
+  margin: 0;
+  padding: 8px;
+  background: #ffebee;
+  border: 1px solid #ef5350;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #c62828;
+}
+
 .metadata {
   display: flex;
   gap: 16px;
@@ -198,6 +265,15 @@
   border-top: 3px solid #4caf50;
   background: linear-gradient(to bottom, #f1f8f4 0%, #ffffff 100%);
   margin-top: auto;
+}
+
+.errorResultItem {
+  border-top: 3px solid #ef5350;
+  background: linear-gradient(to bottom, #ffebee 0%, #ffffff 100%);
+}
+
+.errorResultItem .resultHeader {
+  border-bottom: 2px solid #ef5350;
 }
 
 .resultHeader {
@@ -221,6 +297,12 @@
 .resultIcon {
   font-size: 18px;
   color: #4caf50;
+  font-weight: bold;
+}
+
+.errorIcon {
+  font-size: 18px;
+  color: #ef5350;
   font-weight: bold;
 }
 
@@ -264,5 +346,26 @@
   white-space: pre-wrap;
   word-break: break-word;
   color: #333;
+}
+
+.errorResult {
+  padding: 16px;
+  background: white;
+}
+
+.errorPre {
+  margin: 0;
+  padding: 12px;
+  background: #ffebee;
+  border: 1px solid #ef5350;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #c62828;
 }
 
